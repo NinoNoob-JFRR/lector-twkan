@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.6.0
+// @version      1.6.1
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @run-at       document-idle
@@ -297,6 +297,7 @@
         const modelos = [provider.model].concat(AI_MODELS[id] || [])
             .filter((model, index, all) => model && all.indexOf(model) === index);
         let lastError = null;
+        let quotaError = null;
         for (const model of modelos) {
             try {
                 const text = await callOnce(id, Object.assign({}, provider, { model }), prompt);
@@ -307,12 +308,18 @@
                 return text;
             } catch (error) {
                 lastError = error;
-                if (isQuotaError(error) || !isModelError(error)) {
+                if (isQuotaError(error)) {
+                    // La cuota suele ser por modelo: se prueba el siguiente del
+                    // mismo servicio antes de darlo por agotado hasta manana.
+                    quotaError = error;
+                    continue;
+                }
+                if (!isModelError(error)) {
                     throw error;
                 }
             }
         }
-        throw lastError || new Error('ningun modelo disponible');
+        throw quotaError || lastError || new Error('ningun modelo disponible');
     }
 
     async function requestTranslation(text, onProvider) {
