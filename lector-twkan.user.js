@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.4.3
+// @version      1.5.0
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @run-at       document-idle
@@ -16,6 +16,7 @@
     ];
     const STORAGE_KEY = 'lectorTwkan.settings.v1';
     const FIXES_KEY = 'lectorTwkan.fixes.v1';
+    const GLOSSARY_KEY = 'lectorTwkan.glossary.v1';
     const DEFAULTS = { fontSize: 18 };
     const LONG_PARAGRAPH = 240;
 
@@ -62,6 +63,42 @@
     }
 
     let fixes = readFixes();
+
+    // Glosario: se aplica al texto chino ANTES de traducirlo. Un nombre o una
+    // marca escrita en latino el traductor la respeta siempre, asi que esto
+    // arregla de raiz los nombres y los juegos de palabras (小黃書 = parodia de
+    // 小紅書, que el traductor convertia en "libro pornografico").
+    function readGlossary() {
+        try {
+            const raw = localStorage.getItem(GLOSSARY_KEY);
+            const list = raw ? JSON.parse(raw) : [];
+            return Array.isArray(list)
+                ? list.filter((pair) => Array.isArray(pair) && pair[0]).map((pair) => [String(pair[0]), String(pair[1] || '')])
+                : [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    function saveGlossary() {
+        try {
+            localStorage.setItem(GLOSSARY_KEY, JSON.stringify(glossary));
+        } catch (error) {
+            /* almacenamiento no disponible */
+        }
+    }
+
+    let glossary = readGlossary();
+
+    function applyGlossary(text) {
+        let out = text;
+        for (const pair of glossary) {
+            if (pair[0] && pair[1]) {
+                out = out.split(pair[0]).join(pair[1]);
+            }
+        }
+        return out;
+    }
 
     /**
      * Sustituye "from" por "to" sin repetirse: si el texto ya lleva el
@@ -372,12 +409,24 @@
         return paragraphs;
     }
 
-    function render() {
+    // Texto original del capitulo (en chino, ya limpio). Se guarda para poder
+    // reaplicar el glosario aunque la pagina ya este traducida.
+    let sourceParagraphs = null;
+
+    function render(useSource) {
         const content = findContent();
         if (!content) {
             return false;
         }
-        const paragraphs = collectParagraphs(content);
+        let paragraphs;
+        if (useSource && sourceParagraphs) {
+            paragraphs = sourceParagraphs.slice();
+        } else {
+            paragraphs = collectParagraphs(content);
+            if (!sourceParagraphs) {
+                sourceParagraphs = paragraphs.slice();
+            }
+        }
         if (!paragraphs.length) {
             return false;
         }
@@ -396,7 +445,7 @@
                 wrapper.appendChild(document.createElement('br'));
                 wrapper.appendChild(document.createElement('br'));
             }
-            wrapper.appendChild(document.createTextNode(applyFixes(text)));
+            wrapper.appendChild(document.createTextNode(applyFixes(applyGlossary(text))));
         });
         content.replaceChildren(wrapper);
         watchTranslations(wrapper);
@@ -476,6 +525,25 @@
             }
             saveFixes();
             render();
+        }));
+        panel.appendChild(makeButton('Glosario', 'Fija como se traduce un nombre o palabra china', () => {
+            const original = prompt('Palabra en chino (tal como sale en el original):');
+            if (original === null || !original.trim()) {
+                return;
+            }
+            const key = original.trim();
+            const right = prompt('Como debe salir (vacio = borrar esta entrada):', '');
+            if (right === null) {
+                return;
+            }
+            const value = right.trim();
+            glossary = glossary.filter((pair) => pair[0] !== key);
+            if (value) {
+                glossary.push([key, value]);
+            }
+            saveGlossary();
+            render(true);
+            alert('Guardado. El texto vuelve al original: traduce otra vez para verlo aplicado.');
         }));
         document.body.appendChild(panel);
     }
