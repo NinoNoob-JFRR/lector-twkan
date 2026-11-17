@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.4.0
+// @version      1.4.1
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @run-at       document-idle
@@ -194,6 +194,7 @@
 
     // Un parrafo que no termina en puntuacion final esta cortado a la mitad:
     // la frase continua en el siguiente trozo.
+    const TERMINAL_PUNCTUATION = /[。！？…!?.;:][」』”"’）)】》\]]*$/;
     const DIGIT_CHAR = /[0-9０-９]/;
 
     /**
@@ -233,9 +234,17 @@
                 }
             }
         }
-        // No se une nada mas: el texto se entrega tal cual al traductor, para
-        // que traduzca lo mismo que la pagina original.
-        return parts;
+        // Solo se unen los trozos que la web corta a mitad de frase (sin
+        // puntuacion final). El texto de cada parrafo completo no se toca.
+        const paragraphs = [];
+        for (const part of parts) {
+            if (paragraphs.length && !TERMINAL_PUNCTUATION.test(paragraphs[paragraphs.length - 1])) {
+                paragraphs[paragraphs.length - 1] = joinText(paragraphs[paragraphs.length - 1], part);
+            } else {
+                paragraphs.push(part);
+            }
+        }
+        return paragraphs;
     }
 
     function splitLongParagraph(paragraph) {
