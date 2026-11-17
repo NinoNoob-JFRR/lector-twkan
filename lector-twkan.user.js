@@ -1,9 +1,11 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.6.2
+// @version      1.7.0
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
+// @updateURL    https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan.user.js
+// @downloadURL  https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan.user.js
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==
@@ -124,11 +126,12 @@
         + 'Devuelves solo la traduccion, con los parrafos separados por una linea en blanco.';
 
     function readAI() {
-        const config = { order: AI_ORDER.slice(), providers: JSON.parse(JSON.stringify(AI_BASE)) };
+        const config = { order: AI_ORDER.slice(), providers: JSON.parse(JSON.stringify(AI_BASE)), auto: false };
         try {
             const raw = localStorage.getItem(AI_KEY);
             const saved = raw ? JSON.parse(raw) : null;
             if (saved && typeof saved === 'object') {
+                config.auto = Boolean(saved.auto);
                 if (Array.isArray(saved.order)) {
                     const orden = saved.order.filter((id) => config.providers[id]);
                     for (const id of AI_ORDER) {
@@ -416,7 +419,7 @@
 
     let aiBusy = false;
 
-    async function translateChapter() {
+    async function translateChapter(silent) {
         if (aiBusy) {
             return;
         }
@@ -425,7 +428,9 @@
             return;
         }
         if (!hasAIKey()) {
-            openAISettings();
+            if (!silent) {
+                openAISettings();
+            }
             return;
         }
         const source = sourceParagraphs && sourceParagraphs.length
@@ -462,12 +467,20 @@
             const aviso = agotadas && agotadas === usadas.length
                 ? 'Todas las IA agotaron su cuota de hoy. Puedes esperar al reinicio o anadir otra clave.'
                 : 'No se pudo traducir: ' + String(error && error.message ? error.message : error).slice(0, 160);
-            alert(aviso);
+            if (silent) {
+                if (button) {
+                    button.title = aviso;
+                }
+            } else {
+                alert(aviso);
+            }
         } finally {
             aiBusy = false;
             if (button) {
                 button.textContent = 'IA';
-                button.title = 'Traduce el capitulo con inteligencia artificial';
+                if (!silent) {
+                    button.title = 'Traduce el capitulo con inteligencia artificial';
+                }
             }
         }
     }
@@ -502,6 +515,20 @@
             + 'para unos 100 capitulos al dia; si te quedas corto, anade otro servicio.';
         intro.style.cssText = 'margin:0 0 10px;color:rgb(85,85,85);font-size:13px;';
         box.appendChild(intro);
+
+        const autoRow = document.createElement('label');
+        autoRow.style.cssText = 'display:flex;gap:8px;align-items:flex-start;margin:0 0 6px;'
+            + 'font-size:13px;line-height:1.35;cursor:pointer;';
+        const autoBox = document.createElement('input');
+        autoBox.type = 'checkbox';
+        autoBox.checked = Boolean(ai.auto);
+        autoBox.style.cssText = 'margin:2px 0 0;flex:0 0 auto;';
+        const autoText = document.createElement('span');
+        autoText.textContent = 'Traducir automaticamente al abrir cada capitulo. No gasta cuota '
+            + 'si el capitulo ya esta traducido; si se agota todo, se queda el texto chino.';
+        autoRow.appendChild(autoBox);
+        autoRow.appendChild(autoText);
+        box.appendChild(autoRow);
 
         const campos = [];
 
@@ -560,8 +587,8 @@
             return button;
         };
 
-        actions.appendChild(makeAction('Cerrar', 'rgb(87,96,106)', closeAISettings));
-        actions.appendChild(makeAction('Guardar', 'rgb(31,111,235)', () => {
+        const guardarCampos = () => {
+            ai.auto = autoBox.checked;
             for (const campo of campos) {
                 const provider = ai.providers[campo.id];
                 const nueva = campo.key.value.trim();
@@ -572,19 +599,15 @@
                 provider.model = campo.model.value.trim() || provider.model;
             }
             saveAI();
+        };
+
+        actions.appendChild(makeAction('Cerrar', 'rgb(87,96,106)', closeAISettings));
+        actions.appendChild(makeAction('Guardar', 'rgb(31,111,235)', () => {
+            guardarCampos();
             closeAISettings();
         }));
         actions.appendChild(makeAction('Traducir ahora', 'rgb(26,127,55)', () => {
-            for (const campo of campos) {
-                const provider = ai.providers[campo.id];
-                const nueva = campo.key.value.trim();
-                if (nueva !== provider.key) {
-                    provider.until = 0;
-                }
-                provider.key = nueva;
-                provider.model = campo.model.value.trim() || provider.model;
-            }
-            saveAI();
+            guardarCampos();
             closeAISettings();
             translateChapter();
         }));
@@ -1078,11 +1101,24 @@
         }
     });
 
+    // Traduccion automatica al abrir un capitulo (se activa en el boton ⚙).
+    function autoTranslate() {
+        if (!ai.auto || !hasAIKey()) {
+            return;
+        }
+        if (readAICache()) {
+            return;
+        }
+        // Se espera un poco para que la pagina termine de asentarse.
+        setTimeout(() => translateChapter(true), 1500);
+    }
+
     let attempts = 0;
     const timer = setInterval(() => {
         if (render()) {
             clearInterval(timer);
             buildPanel();
+            autoTranslate();
             return;
         }
         attempts += 1;
