@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.5.0
+// @version      1.6.0
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @run-at       document-idle
@@ -100,10 +100,502 @@
         return out;
     }
 
-    /**
-     * Sustituye "from" por "to" sin repetirse: si el texto ya lleva el
-     * resultado ("Han Luyi" cuando se cambia "Han Lu"), no se vuelve a tocar.
-     */
+    // ---------------- Traduccion con IA ----------------
+    // Varios servicios en cadena: si uno agota la cuota del dia, se pasa solo
+    // al siguiente. Los planes gratuitos tienen limite diario, pero encadenados
+    // cubren de sobra la lectura de un dia (una peticion cada 1.400 caracteres).
+    const AI_KEY = 'lectorTwkan.ai.v1';
+    const AI_CACHE_KEY = 'lectorTwkan.aiCache.v1';
+
+    const AI_BASE = {
+        gemini: { key: '', model: 'gemini-flash-latest', until: 0 },
+        groq: { key: '', model: 'llama-3.3-70b-versatile', until: 0 },
+        openrouter: { key: '', model: 'google/gemma-4-31b-it:free', until: 0 }
+    };
+    const AI_ORDER = ['gemini', 'groq', 'openrouter'];
+    const AI_NAMES = { gemini: 'Gemini (Google)', groq: 'Groq', openrouter: 'OpenRouter' };
+    const AI_MODELS = {
+        gemini: ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash'],
+        groq: ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'llama-3.1-8b-instant'],
+        openrouter: []
+    };
+    const AI_SYSTEM = 'Eres un traductor literario de chino a espanol, especializado en novelas web. '
+        + 'Traduces con naturalidad, mantienes los nombres propios en pinyin y no anades comentarios. '
+        + 'Devuelves solo la traduccion, con los parrafos separados por una linea en blanco.';
+
+    function readAI() {
+        const config = { order: AI_ORDER.slice(), providers: JSON.parse(JSON.stringify(AI_BASE)) };
+        try {
+            const raw = localStorage.getItem(AI_KEY);
+            const saved = raw ? JSON.parse(raw) : null;
+            if (saved && typeof saved === 'object') {
+                if (Array.isArray(saved.order)) {
+                    const orden = saved.order.filter((id) => config.providers[id]);
+                    for (const id of AI_ORDER) {
+                        if (orden.indexOf(id) < 0) {
+                            orden.push(id);
+                        }
+                    }
+                    config.order = orden;
+                }
+                for (const id of AI_ORDER) {
+                    const guardado = saved.providers && saved.providers[id];
+                    if (guardado) {
+                        config.providers[id].key = String(guardado.key || '');
+                        config.providers[id].model = String(guardado.model || config.providers[id].model);
+                        config.providers[id].until = Number(guardado.until || 0) || 0;
+                    }
+                }
+            }
+        } catch (error) {
+            /* configuracion ilegible: se usan los valores por defecto */
+        }
+        return config;
+    }
+
+    let ai = readAI();
+
+    function saveAI() {
+        try {
+            localStorage.setItem(AI_KEY, JSON.stringify(ai));
+        } catch (error) {
+            /* almacenamiento no disponible */
+        }
+    }
+
+    function hasAIKey() {
+        return ai.order.some((id) => ai.providers[id] && ai.providers[id].key);
+    }
+
+    function nextDayStart() {
+        const now = new Date();
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
+    }
+
+    function aiPrompt(text) {
+        const terminos = glossary
+            .filter((pair) => pair[0] && pair[1])
+            .map((pair) => pair[0] + ' = ' + pair[1])
+            .join('; ');
+        let prompt = 'Traduce al espanol este fragmento de una novela web china. '
+            + 'Manten el tono de novela, los dialogos y los parrafos. '
+            + 'Escribe los nombres propios en pinyin y se consistente. '
+            + 'No anadas titulos, notas ni explicaciones. '
+            + 'Separa los parrafos con una linea en blanco.';
+        if (terminos) {
+            prompt += ' Glosario obligatorio: ' + terminos + '.';
+        }
+        return prompt + '\n\n' + text;
+    }
+
+    async function fetchJSON(url, options, timeoutMs) {
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timer = controller ? setTimeout(() => controller.abort(), timeoutMs || 90000) : null;
+        try {
+            const res = await fetch(url, controller ? Object.assign({}, options, { signal: controller.signal }) : options);
+            const raw = await res.text();
+            let data = null;
+            try {
+                data = raw ? JSON.parse(raw) : null;
+            } catch (error) {
+                data = raw;
+            }
+            if (!res.ok) {
+                const failure = new Error('HTTP ' + res.status + ' ' + String(raw).slice(0, 180));
+                failure.status = res.status;
+                failure.body = data;
+                throw failure;
+            }
+            return data;
+        } finally {
+            if (timer) {
+                clearTimeout(timer);
+            }
+        }
+    }
+
+    async function callGemini(provider, prompt) {
+        const url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+            + encodeURIComponent(provider.model) + ':generateContent?key=' + encodeURIComponent(provider.key);
+        const data = await fetchJSON(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                systemInstruction: { parts: [{ text: AI_SYSTEM }] },
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.4, maxOutputTokens: 8192 }
+            })
+        });
+        const candidate = data && data.candidates && data.candidates[0];
+        const parts = candidate && candidate.content && candidate.content.parts;
+        const text = Array.isArray(parts) ? parts.map((part) => part.text || '').join('') : '';
+        if (!text.trim()) {
+            throw new Error('respuesta vacia de Gemini');
+        }
+        return text;
+    }
+
+    async function callCompatible(provider, prompt, base, extraHeaders) {
+        const headers = Object.assign({
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + provider.key
+        }, extraHeaders || {});
+        const data = await fetchJSON(base + '/chat/completions', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                model: provider.model,
+                temperature: 0.4,
+                max_tokens: 8192,
+                messages: [
+                    { role: 'system', content: AI_SYSTEM },
+                    { role: 'user', content: prompt }
+                ]
+            })
+        });
+        const choice = data && data.choices && data.choices[0];
+        const text = choice && choice.message ? choice.message.content : '';
+        if (!text || !text.trim()) {
+            throw new Error('respuesta vacia del servicio');
+        }
+        return text;
+    }
+
+    function callOnce(id, provider, prompt) {
+        if (id === 'gemini') {
+            return callGemini(provider, prompt);
+        }
+        if (id === 'groq') {
+            return callCompatible(provider, prompt, 'https://api.groq.com/openai/v1');
+        }
+        return callCompatible(provider, prompt, 'https://openrouter.ai/api/v1', {
+            'HTTP-Referer': location.origin,
+            'X-Title': 'Lector twkan'
+        });
+    }
+
+    function isQuotaError(error) {
+        if (!error) {
+            return false;
+        }
+        if (error.status === 429) {
+            return true;
+        }
+        const text = String(error.message || '') + ' ' + JSON.stringify(error.body || {});
+        return /quota|rate.?limit|resource_exhausted|too many requests|exceeded/i.test(text);
+    }
+
+    function isModelError(error) {
+        if (!error) {
+            return false;
+        }
+        return error.status === 404
+            || /model[^.]{0,40}(not found|does not exist|invalid|decommissioned|unknown)/i.test(String(error.message || ''));
+    }
+
+    async function callProvider(id, provider, prompt) {
+        const modelos = [provider.model].concat(AI_MODELS[id] || [])
+            .filter((model, index, all) => model && all.indexOf(model) === index);
+        let lastError = null;
+        for (const model of modelos) {
+            try {
+                const text = await callOnce(id, Object.assign({}, provider, { model }), prompt);
+                if (model !== provider.model) {
+                    provider.model = model;
+                    saveAI();
+                }
+                return text;
+            } catch (error) {
+                lastError = error;
+                if (isQuotaError(error) || !isModelError(error)) {
+                    throw error;
+                }
+            }
+        }
+        throw lastError || new Error('ningun modelo disponible');
+    }
+
+    async function requestTranslation(text, onProvider) {
+        let lastError = null;
+        for (const id of ai.order) {
+            const provider = ai.providers[id];
+            if (!provider || !provider.key) {
+                continue;
+            }
+            if (provider.until && provider.until > Date.now()) {
+                continue;
+            }
+            try {
+                if (onProvider) {
+                    onProvider(id);
+                }
+                const result = await callProvider(id, provider, aiPrompt(text));
+                if (provider.until) {
+                    provider.until = 0;
+                    saveAI();
+                }
+                return result;
+            } catch (error) {
+                lastError = error;
+                if (isQuotaError(error)) {
+                    provider.until = nextDayStart();
+                    saveAI();
+                }
+            }
+        }
+        throw lastError || new Error('no hay ninguna IA con clave');
+    }
+
+    function splitTranslation(text) {
+        const clean = String(text || '')
+            .replace(/^```[a-zA-Z]*\s*/, '')
+            .replace(/```\s*$/, '')
+            .replace(/^(aqui|aquí)\s+(esta|está)\s+la\s+traducci[oó]n[^\n]*\n+/i, '')
+            .trim();
+        const parts = clean.split(/\n\s*\n+/)
+            .map((part) => part.replace(/\s*\n\s*/g, ' ').trim())
+            .filter(Boolean);
+        return parts.length ? parts : [clean];
+    }
+
+    function chunkParagraphs(paragraphs, max) {
+        const chunks = [];
+        let current = [];
+        let size = 0;
+        for (const paragraph of paragraphs) {
+            if (current.length && size + paragraph.length > max) {
+                chunks.push(current.join('\n\n'));
+                current = [];
+                size = 0;
+            }
+            current.push(paragraph);
+            size += paragraph.length + 2;
+        }
+        if (current.length) {
+            chunks.push(current.join('\n\n'));
+        }
+        return chunks;
+    }
+
+    function chapterKey() {
+        return location.pathname + location.search;
+    }
+
+    function readAICache() {
+        try {
+            const raw = localStorage.getItem(AI_CACHE_KEY);
+            const data = raw ? JSON.parse(raw) : null;
+            const entry = data && data[chapterKey()];
+            return entry && Array.isArray(entry.p) && entry.p.length ? entry.p : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function saveAICache(paragraphs) {
+        try {
+            const raw = localStorage.getItem(AI_CACHE_KEY);
+            const data = raw ? JSON.parse(raw) : {};
+            data[chapterKey()] = { t: Date.now(), p: paragraphs };
+            const keys = Object.keys(data).sort((a, b) => (data[b].t || 0) - (data[a].t || 0));
+            for (const key of keys.slice(30)) {
+                delete data[key];
+            }
+            localStorage.setItem(AI_CACHE_KEY, JSON.stringify(data));
+        } catch (error) {
+            /* sin espacio: se sigue sin cache */
+        }
+    }
+
+    let aiBusy = false;
+
+    async function translateChapter() {
+        if (aiBusy) {
+            return;
+        }
+        const content = findContent();
+        if (!content) {
+            return;
+        }
+        if (!hasAIKey()) {
+            openAISettings();
+            return;
+        }
+        const source = sourceParagraphs && sourceParagraphs.length
+            ? sourceParagraphs.slice()
+            : collectParagraphs(content);
+        if (!source.length) {
+            return;
+        }
+        const chunks = chunkParagraphs(source, 1400);
+        const result = [];
+        const button = document.getElementById('lector-ia');
+        aiBusy = true;
+        try {
+            for (let index = 0; index < chunks.length; index++) {
+                if (button) {
+                    button.textContent = 'IA ' + (index + 1) + '/' + chunks.length;
+                }
+                const text = await requestTranslation(chunks[index], (id) => {
+                    if (button) {
+                        button.textContent = 'IA ' + (index + 1) + '/' + chunks.length;
+                        button.title = 'Traduciendo con ' + (AI_NAMES[id] || id);
+                    }
+                });
+                result.push.apply(result, splitTranslation(text));
+            }
+            if (!result.length) {
+                throw new Error('la traduccion vino vacia');
+            }
+            paint(result);
+            saveAICache(result);
+        } catch (error) {
+            const usadas = ai.order.filter((id) => ai.providers[id] && ai.providers[id].key);
+            const agotadas = usadas.filter((id) => ai.providers[id].until > Date.now()).length;
+            const aviso = agotadas && agotadas === usadas.length
+                ? 'Todas las IA agotaron su cuota de hoy. Puedes esperar al reinicio o anadir otra clave.'
+                : 'No se pudo traducir: ' + String(error && error.message ? error.message : error).slice(0, 160);
+            alert(aviso);
+        } finally {
+            aiBusy = false;
+            if (button) {
+                button.textContent = 'IA';
+                button.title = 'Traduce el capitulo con inteligencia artificial';
+            }
+        }
+    }
+
+    function closeAISettings() {
+        const actual = document.getElementById('lector-ai-settings');
+        if (actual) {
+            actual.remove();
+        }
+    }
+
+    function openAISettings() {
+        closeAISettings();
+        const overlay = document.createElement('div');
+        overlay.id = 'lector-ai-settings';
+        overlay.style.cssText = 'position:fixed;top:0;right:0;bottom:0;left:0;z-index:2147483647;'
+            + 'background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:12px;';
+
+        const box = document.createElement('div');
+        box.style.cssText = 'background:white;color:rgb(17,17,17);max-width:520px;width:100%;max-height:90vh;'
+            + 'overflow:auto;border-radius:12px;padding:16px;'
+            + 'font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;';
+
+        const title = document.createElement('h2');
+        title.textContent = 'Traduccion con IA';
+        title.style.cssText = 'margin:0 0 6px;font-size:18px;';
+        box.appendChild(title);
+
+        const intro = document.createElement('p');
+        intro.textContent = 'Pega la clave de los servicios que quieras. Se usan en orden: si uno '
+            + 'agota su cuota del dia, se pasa solo al siguiente. Con una clave por servicio sobra '
+            + 'para leer una novela entera al dia.';
+        intro.style.cssText = 'margin:0 0 10px;color:rgb(85,85,85);font-size:13px;';
+        box.appendChild(intro);
+
+        const campos = [];
+
+        const buildRow = (id) => {
+            const row = document.createElement('div');
+            row.style.cssText = 'border-top:1px solid rgb(221,221,221);padding:10px 0;';
+
+            const name = document.createElement('strong');
+            name.textContent = AI_NAMES[id];
+            row.appendChild(name);
+
+            const key = document.createElement('input');
+            key.type = 'password';
+            key.placeholder = 'Clave API';
+            key.value = ai.providers[id].key;
+            key.autocomplete = 'off';
+            key.spellcheck = false;
+            key.style.cssText = 'width:100%;box-sizing:border-box;padding:8px;margin-top:6px;'
+                + 'border:1px solid rgb(204,204,204);border-radius:6px;font:inherit;';
+            row.appendChild(key);
+
+            const model = document.createElement('input');
+            model.type = 'text';
+            model.placeholder = 'Modelo';
+            model.value = ai.providers[id].model;
+            model.autocomplete = 'off';
+            model.spellcheck = false;
+            model.style.cssText = 'width:100%;box-sizing:border-box;padding:8px;margin-top:6px;'
+                + 'border:1px solid rgb(204,204,204);border-radius:6px;font:12px ui-monospace,Consolas,monospace;';
+            row.appendChild(model);
+
+            campos.push({ id, key, model });
+            return row;
+        };
+
+        for (const id of ai.order) {
+            box.appendChild(buildRow(id));
+        }
+
+        const aviso = document.createElement('p');
+        aviso.textContent = 'Las claves se guardan solo en este navegador. Si un servicio esta agotado '
+            + 'hasta manana, al cambiar su clave se vuelve a probar.';
+        aviso.style.cssText = 'margin:10px 0;color:rgb(85,85,85);font-size:12px;';
+        box.appendChild(aviso);
+
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;';
+
+        const makeAction = (label, background, handler) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = label;
+            button.style.cssText = 'border:0;border-radius:8px;padding:10px 14px;font:inherit;'
+                + 'background:' + background + ';color:#fff;cursor:pointer;';
+            button.addEventListener('click', handler);
+            return button;
+        };
+
+        actions.appendChild(makeAction('Cerrar', 'rgb(87,96,106)', closeAISettings));
+        actions.appendChild(makeAction('Guardar', 'rgb(31,111,235)', () => {
+            for (const campo of campos) {
+                const provider = ai.providers[campo.id];
+                const nueva = campo.key.value.trim();
+                if (nueva !== provider.key) {
+                    provider.until = 0;
+                }
+                provider.key = nueva;
+                provider.model = campo.model.value.trim() || provider.model;
+            }
+            saveAI();
+            closeAISettings();
+        }));
+        actions.appendChild(makeAction('Traducir ahora', 'rgb(26,127,55)', () => {
+            for (const campo of campos) {
+                const provider = ai.providers[campo.id];
+                const nueva = campo.key.value.trim();
+                if (nueva !== provider.key) {
+                    provider.until = 0;
+                }
+                provider.key = nueva;
+                provider.model = campo.model.value.trim() || provider.model;
+            }
+            saveAI();
+            closeAISettings();
+            translateChapter();
+        }));
+        box.appendChild(actions);
+
+        overlay.appendChild(box);
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) {
+                closeAISettings();
+            }
+        });
+        document.body.appendChild(overlay);
+        const primero = campos.find((campo) => !ai.providers[campo.id].key);
+        if (primero) {
+            primero.key.focus();
+        }
+    }
+
     function replaceOnce(text, from, to) {
         if (!from) {
             return text;
@@ -413,21 +905,13 @@
     // reaplicar el glosario aunque la pagina ya este traducida.
     let sourceParagraphs = null;
 
-    function render(useSource) {
+    /**
+     * Escribe los parrafos en la pagina, ya sea el original o una traduccion.
+     * Lo usan tanto el formateo normal como la traduccion con IA.
+     */
+    function paint(paragraphs) {
         const content = findContent();
-        if (!content) {
-            return false;
-        }
-        let paragraphs;
-        if (useSource && sourceParagraphs) {
-            paragraphs = sourceParagraphs.slice();
-        } else {
-            paragraphs = collectParagraphs(content);
-            if (!sourceParagraphs) {
-                sourceParagraphs = paragraphs.slice();
-            }
-        }
-        if (!paragraphs.length) {
+        if (!content || !paragraphs || !paragraphs.length) {
             return false;
         }
         injectStyles();
@@ -445,11 +929,36 @@
                 wrapper.appendChild(document.createElement('br'));
                 wrapper.appendChild(document.createElement('br'));
             }
-            wrapper.appendChild(document.createTextNode(applyFixes(applyGlossary(text))));
+            wrapper.appendChild(document.createTextNode(applyFixes(text)));
         });
         content.replaceChildren(wrapper);
         watchTranslations(wrapper);
         return true;
+    }
+
+    function render(useSource) {
+        const content = findContent();
+        if (!content) {
+            return false;
+        }
+        let paragraphs;
+        if (useSource && sourceParagraphs) {
+            paragraphs = sourceParagraphs.map(applyGlossary);
+        } else {
+            const original = collectParagraphs(content);
+            if (!sourceParagraphs) {
+                sourceParagraphs = original.slice();
+            }
+            // Si este capitulo ya se tradujo con IA, se recuerda y se vuelve a
+            // mostrar tal cual: no gasta cuota y se lee al instante.
+            const cached = readAICache();
+            if (cached) {
+                paragraphs = splitLongRequested ? cached.flatMap(splitLongParagraph) : cached.slice();
+            } else {
+                paragraphs = original.map(applyGlossary);
+            }
+        }
+        return paint(paragraphs);
     }
 
     function changeFontSize(delta) {
@@ -545,6 +1054,12 @@
             render(true);
             alert('Guardado. El texto vuelve al original: traduce otra vez para verlo aplicado.');
         }));
+        const iaButton = makeButton('IA', 'Traduce el capitulo con inteligencia artificial', () => {
+            translateChapter();
+        });
+        iaButton.id = 'lector-ia';
+        panel.appendChild(iaButton);
+        panel.appendChild(makeButton('⚙', 'Claves de Gemini, Groq y OpenRouter', () => openAISettings()));
         document.body.appendChild(panel);
     }
 
