@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.4.1
+// @version      1.4.2
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @run-at       document-idle
@@ -346,9 +346,12 @@
         }
 
         // El capitulo suele empezar repitiendo el titulo que ya muestra la
-        // pagina en el <h1>: no hace falta leerlo dos veces.
-        const title = (document.querySelector('h1')?.innerText || '').trim();
-        if (title && paragraphs[0] === title) {
+        // pagina en el <h1>: no hace falta leerlo dos veces. El <h1> puede
+        // llevar detras el nombre de la novela y del sitio, asi que se compara
+        // con el principio.
+        const heading = (document.querySelector('h1')?.innerText || '').trim();
+        const first = paragraphs[0] || '';
+        if (first && first.length > 3 && heading.startsWith(first)) {
             paragraphs.shift();
         }
 
