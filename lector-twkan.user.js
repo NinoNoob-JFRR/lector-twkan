@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.6.1
+// @version      1.6.2
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @run-at       document-idle
@@ -498,8 +498,8 @@
 
         const intro = document.createElement('p');
         intro.textContent = 'Pega la clave de los servicios que quieras. Se usan en orden: si uno '
-            + 'agota su cuota del dia, se pasa solo al siguiente. Con una clave por servicio sobra '
-            + 'para leer una novela entera al dia.';
+            + 'agota su cuota del dia, se pasa solo al siguiente. Con las tres suele alcanzar '
+            + 'para unos 100 capitulos al dia; si te quedas corto, anade otro servicio.';
         intro.style.cssText = 'margin:0 0 10px;color:rgb(85,85,85);font-size:13px;';
         box.appendChild(intro);
 
