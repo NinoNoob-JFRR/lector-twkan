@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.2.0
+// @version      1.2.1
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @run-at       document-idle
@@ -91,20 +91,19 @@
     // Un parrafo que no termina en puntuacion final esta cortado a la mitad:
     // la frase continua en el siguiente trozo.
     const TERMINAL_PUNCTUATION = /[。！？…!?.;:][」』”"’）)】》\]]*$/;
-    const WIDE_CHAR = /[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef\u3000-\u303f]/;
     const DIGIT_CHAR = /[0-9０-９]/;
 
     /**
-     * Une dos trozos sin inventar espacios. El chino no separa palabras con
-     * espacios: meter uno dentro de "100萬" o entre dos caracteres rompe la
-     * traduccion. Solo se pone espacio si ambos lados son texto latino.
+     * Une dos trozos con un espacio, salvo cuando se parte una cifra: ahi el
+     * espacio cambiaria el numero ("100" + "000" seria 100 000 y no 100000).
      */
     function joinText(left, right) {
         const before = left.slice(-1);
         const after = right.slice(0, 1);
-        const glue = WIDE_CHAR.test(before) || WIDE_CHAR.test(after)
-            || (DIGIT_CHAR.test(before) && DIGIT_CHAR.test(after));
-        return glue ? left + right : left + ' ' + right;
+        if (DIGIT_CHAR.test(before) && DIGIT_CHAR.test(after)) {
+            return left + right;
+        }
+        return left + ' ' + right;
     }
 
     /**
