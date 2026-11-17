@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.4.2
+// @version      1.4.3
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @run-at       document-idle
@@ -195,6 +195,7 @@
     // Un parrafo que no termina en puntuacion final esta cortado a la mitad:
     // la frase continua en el siguiente trozo.
     const TERMINAL_PUNCTUATION = /[。！？…!?.;:][」』”"’）)】》\]]*$/;
+    const HEADING_LINE = /^第[0-9０-９一二三四五六七八九十百千零〇]+章/;
     const DIGIT_CHAR = /[0-9０-９]/;
 
     /**
@@ -221,7 +222,7 @@
         return lines.reduce((acc, line) => (acc ? joinText(acc, line) : line), '');
     }
 
-    function splitParagraphs(text) {
+    function splitParagraphs(text, heading) {
         const normalized = text.replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ');
         const parts = [];
         for (const block of normalized.split(/\n{2,}/)) {
@@ -234,12 +235,22 @@
                 }
             }
         }
+
+        // El capitulo repite al principio el titulo que ya muestra el <h1>.
+        // Se quita antes de unir frases, o acabaria pegado al primer parrafo.
+        if (heading && parts[0] && parts[0].length > 3 && heading.startsWith(parts[0])) {
+            parts.shift();
+        }
+
         // Solo se unen los trozos que la web corta a mitad de frase (sin
         // puntuacion final). El texto de cada parrafo completo no se toca.
         const paragraphs = [];
         for (const part of parts) {
-            if (paragraphs.length && !TERMINAL_PUNCTUATION.test(paragraphs[paragraphs.length - 1])) {
-                paragraphs[paragraphs.length - 1] = joinText(paragraphs[paragraphs.length - 1], part);
+            const previous = paragraphs[paragraphs.length - 1];
+            const cortada = previous && !TERMINAL_PUNCTUATION.test(previous)
+                && !HEADING_LINE.test(previous);
+            if (cortada) {
+                paragraphs[paragraphs.length - 1] = joinText(previous, part);
             } else {
                 paragraphs.push(part);
             }
@@ -338,25 +349,23 @@
 
     function collectParagraphs(root) {
         const clean = root.querySelector('.lector-limpio');
+        // El <h1> lleva detras el nombre de la novela y del sitio: se compara
+        // solo con el principio.
+        const heading = (document.querySelector('h1')?.innerText || '').trim();
         let paragraphs;
         if (clean) {
             paragraphs = readRendered(clean);
         } else {
-            paragraphs = splitParagraphs(htmlToText(root.innerHTML));
+            paragraphs = splitParagraphs(htmlToText(root.innerHTML), heading);
         }
 
-        // El capitulo suele empezar repitiendo el titulo que ya muestra la
-        // pagina en el <h1>: no hace falta leerlo dos veces. El <h1> puede
-        // llevar detras el nombre de la novela y del sitio, asi que se compara
-        // con el principio.
-        const heading = (document.querySelector('h1')?.innerText || '').trim();
+        // El capitulo repite al principio el titulo que ya muestra el <h1>.
         const first = paragraphs[0] || '';
         if (first && first.length > 3 && heading.startsWith(first)) {
             paragraphs.shift();
         }
 
         paragraphs = paragraphs.filter((p) => !isWatermark(p));
-
         if (splitLongRequested) {
             paragraphs = paragraphs.flatMap(splitLongParagraph);
         }
