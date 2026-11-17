@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.2.1
+// @version      1.3.0
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @run-at       document-idle
@@ -15,6 +15,7 @@
         '#txtcontent0', '#txtcontent', '.txtcontent', '#chaptercontent', '.read-content'
     ];
     const STORAGE_KEY = 'lectorTwkan.settings.v1';
+    const FIXES_KEY = 'lectorTwkan.fixes.v1';
     const DEFAULTS = { fontSize: 18 };
     const LONG_PARAGRAPH = 240;
 
@@ -36,6 +37,109 @@
         } catch (error) {
             /* almacenamiento no disponible */
         }
+    }
+
+    // Correcciones propias del lector: el traductor a veces cambia un nombre
+    // segun el parrafo. El usuario lo corrige una vez y se aplica en todos.
+    function readFixes() {
+        try {
+            const raw = localStorage.getItem(FIXES_KEY);
+            const list = raw ? JSON.parse(raw) : [];
+            return Array.isArray(list)
+                ? list.filter((pair) => Array.isArray(pair) && pair[0]).map((pair) => [String(pair[0]), String(pair[1] || '')])
+                : [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    function saveFixes() {
+        try {
+            localStorage.setItem(FIXES_KEY, JSON.stringify(fixes));
+        } catch (error) {
+            /* almacenamiento no disponible */
+        }
+    }
+
+    let fixes = readFixes();
+
+    /**
+     * Sustituye "from" por "to" sin repetirse: si el texto ya lleva el
+     * resultado ("Han Luyi" cuando se cambia "Han Lu"), no se vuelve a tocar.
+     */
+    function replaceOnce(text, from, to) {
+        if (!from) {
+            return text;
+        }
+        const rest = to.startsWith(from) ? to.slice(from.length) : null;
+        let out = '';
+        let index = 0;
+        for (;;) {
+            const found = text.indexOf(from, index);
+            if (found < 0) {
+                return out + text.slice(index);
+            }
+            out += text.slice(index, found);
+            const already = rest && text.startsWith(rest, found + from.length);
+            out += already ? from : to;
+            index = found + from.length;
+        }
+    }
+
+    function applyFixes(text) {
+        let out = text;
+        for (const pair of fixes) {
+            out = replaceOnce(out, pair[0], pair[1]);
+        }
+        return out;
+    }
+
+    function fixTextNode(node) {
+        if (!fixes.length) {
+            return;
+        }
+        if (node.nodeType === 3) {
+            const value = node.nodeValue;
+            if (!value) {
+                return;
+            }
+            const fixed = applyFixes(value);
+            if (fixed !== value) {
+                node.nodeValue = fixed;
+            }
+            return;
+        }
+        // El traductor sustituye parrafos enteros por elementos nuevos, asi que
+        // tambien hay que recorrer el subarbol que acaba de insertar.
+        if (node.nodeType === 1 && node.childNodes) {
+            for (const child of Array.from(node.childNodes)) {
+                fixTextNode(child);
+            }
+        }
+    }
+
+    let translationWatcher = null;
+
+    /** Aplica las correcciones tambien cuando el traductor cambia el texto. */
+    function watchTranslations(wrapper) {
+        if (typeof MutationObserver === 'undefined') {
+            return;
+        }
+        if (!translationWatcher) {
+            translationWatcher = new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                    if (mutation.type === 'characterData') {
+                        fixTextNode(mutation.target);
+                        continue;
+                    }
+                    for (const node of mutation.addedNodes) {
+                        fixTextNode(node);
+                    }
+                }
+            });
+        }
+        translationWatcher.disconnect();
+        translationWatcher.observe(wrapper, { subtree: true, childList: true, characterData: true });
     }
 
     function findContent() {
@@ -256,11 +360,12 @@
         const fragment = document.createDocumentFragment();
         for (const text of paragraphs) {
             const p = document.createElement('p');
-            p.textContent = text;
+            p.textContent = applyFixes(text);
             fragment.appendChild(p);
         }
         wrapper.appendChild(fragment);
         content.replaceChildren(wrapper);
+        watchTranslations(wrapper);
         return true;
     }
 
@@ -318,6 +423,24 @@
         panel.appendChild(makeButton('A+', 'Aumentar el tamano de letra', () => changeFontSize(1)));
         panel.appendChild(makeButton('Dividir largos', 'Separa los parrafos muy largos en bloques mas cortos', () => {
             splitLongRequested = true;
+            render();
+        }));
+        panel.appendChild(makeButton('Corregir', 'Arregla nombres o palabras que el traductor cambia', () => {
+            const wrong = prompt('Palabra o nombre que sale mal (tal como se lee ahora):');
+            if (wrong === null || !wrong.trim()) {
+                return;
+            }
+            const from = wrong.trim();
+            const right = prompt('Como debe salir (vacio = borrar esta correccion):', '');
+            if (right === null) {
+                return;
+            }
+            const to = right.trim();
+            fixes = fixes.filter((pair) => pair[0] !== from);
+            if (to) {
+                fixes.push([from, to]);
+            }
+            saveFixes();
             render();
         }));
         document.body.appendChild(panel);
