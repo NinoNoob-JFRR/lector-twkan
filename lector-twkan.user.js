@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.3.0
+// @version      1.4.0
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @run-at       document-idle
@@ -194,7 +194,6 @@
 
     // Un parrafo que no termina en puntuacion final esta cortado a la mitad:
     // la frase continua en el siguiente trozo.
-    const TERMINAL_PUNCTUATION = /[。！？…!?.;:][」』”"’）)】》\]]*$/;
     const DIGIT_CHAR = /[0-9０-９]/;
 
     /**
@@ -234,18 +233,9 @@
                 }
             }
         }
-
-        // Si un trozo no acaba en puntuacion final, se une al siguiente para
-        // que el traductor vea la frase completa y no traduzca media idea.
-        const paragraphs = [];
-        for (const part of parts) {
-            if (paragraphs.length && !TERMINAL_PUNCTUATION.test(paragraphs[paragraphs.length - 1])) {
-                paragraphs[paragraphs.length - 1] = joinText(paragraphs[paragraphs.length - 1], part);
-            } else {
-                paragraphs.push(part);
-            }
-        }
-        return paragraphs;
+        // No se une nada mas: el texto se entrega tal cual al traductor, para
+        // que traduzca lo mismo que la pagina original.
+        return parts;
     }
 
     function splitLongParagraph(paragraph) {
@@ -292,22 +282,12 @@
                 margin: 0 auto;
                 padding: 4px 0 44px;
                 font-size: var(--lector-font-size, 18px);
-                line-height: 1.6;
+                line-height: 1.65;
                 text-align: justify;
                 overflow-wrap: break-word;
                 word-break: normal;
                 hyphens: none;
             }
-            #txtcontent0 .lector-limpio p,
-            .lector-limpio p {
-                margin: 18px 0;
-                padding: 0;
-                text-indent: 0;
-            }
-            #txtcontent0 .lector-limpio p:first-child,
-            .lector-limpio p:first-child { margin-top: 0; }
-            #txtcontent0 .lector-limpio p:last-child,
-            .lector-limpio p:last-child { margin-bottom: 0; }
             @media (max-width: 600px) {
                 #txtcontent0 .lector-limpio,
                 .lector-limpio { padding-bottom: 92px; }
@@ -316,13 +296,42 @@
         document.head.appendChild(style);
     }
 
+    /** Lee los parrafos del bloque ya limpio (tambien si esta traducido). */
+    function readRendered(wrapper) {
+        const parts = [];
+        let buffer = '';
+        const flush = () => {
+            const text = buffer.replace(/[\u2003\u2002]/g, ' ').trim();
+            if (text) {
+                parts.push(text);
+            }
+            buffer = '';
+        };
+        const walk = (node) => {
+            if (node.nodeType === 3) {
+                buffer += node.nodeValue;
+                return;
+            }
+            if (node.nodeName === 'BR') {
+                flush();
+                return;
+            }
+            for (const child of Array.from(node.childNodes || [])) {
+                walk(child);
+            }
+        };
+        for (const child of Array.from(wrapper.childNodes)) {
+            walk(child);
+        }
+        flush();
+        return parts;
+    }
+
     function collectParagraphs(root) {
         const clean = root.querySelector('.lector-limpio');
         let paragraphs;
         if (clean) {
-            paragraphs = Array.from(clean.querySelectorAll(':scope > p'))
-                .map((p) => (p.textContent || '').trim())
-                .filter(Boolean);
+            paragraphs = readRendered(clean);
         } else {
             paragraphs = splitParagraphs(htmlToText(root.innerHTML));
         }
@@ -357,13 +366,17 @@
         wrapper.className = 'lector-limpio';
         wrapper.style.setProperty('--lector-font-size', settings.fontSize + 'px');
 
-        const fragment = document.createDocumentFragment();
-        for (const text of paragraphs) {
-            const p = document.createElement('p');
-            p.textContent = applyFixes(text);
-            fragment.appendChild(p);
-        }
-        wrapper.appendChild(fragment);
+        // Todo el capitulo va en un solo bloque separado por <br><br>, igual
+        // que en la pagina original. Asi el traductor recibe el texto entero
+        // como una unidad y conserva el contexto: con un <p> por parrafo
+        // traducia cada uno aislado y cambiaba nombres, frases y cifras.
+        paragraphs.forEach((text, index) => {
+            if (index) {
+                wrapper.appendChild(document.createElement('br'));
+                wrapper.appendChild(document.createElement('br'));
+            }
+            wrapper.appendChild(document.createTextNode(applyFixes(text)));
+        });
         content.replaceChildren(wrapper);
         watchTranslations(wrapper);
         return true;
