@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.7.1
+// @version      1.7.2
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @updateURL    https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan.user.js
@@ -110,16 +110,21 @@
     const AI_CACHE_KEY = 'lectorTwkan.aiCache.v1';
 
     const AI_BASE = {
-        gemini: { key: '', model: 'gemini-flash-latest', until: 0 },
-        groq: { key: '', model: 'llama-3.3-70b-versatile', until: 0 },
-        openrouter: { key: '', model: 'google/gemma-4-31b-it:free', until: 0 }
+        gemini: { key: '', model: 'gemini-flash-latest', until: 0, cool: 0 },
+        groq: { key: '', model: 'llama-3.3-70b-versatile', until: 0, cool: 0 },
+        openrouter: { key: '', model: 'google/gemma-4-31b-it:free', until: 0, cool: 0 }
     };
     const AI_ORDER = ['gemini', 'groq', 'openrouter'];
     const AI_NAMES = { gemini: 'Gemini (Google)', groq: 'Groq', openrouter: 'OpenRouter' };
     const AI_MODELS = {
         gemini: ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash'],
         groq: ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'llama-3.1-8b-instant'],
-        openrouter: []
+        openrouter: [
+            'google/gemma-4-31b-it:free',
+            'google/gemma-4-26b-a4b-it:free',
+            'inclusionai/ling-3.2-flash:free',
+            'baidu/ernie-5.5-flash-preview:free'
+        ]
     };
     const AI_SYSTEM = 'Eres un traductor literario de chino a espanol, especializado en novelas web. '
         + 'Traduces con naturalidad, mantienes los nombres propios en pinyin y no anades comentarios. '
@@ -147,6 +152,7 @@
                         config.providers[id].key = String(guardado.key || '');
                         config.providers[id].model = String(guardado.model || config.providers[id].model);
                         config.providers[id].until = Number(guardado.until || 0) || 0;
+                        config.providers[id].cool = Number(guardado.cool || 0) || 0;
                     }
                 }
             }
@@ -314,6 +320,20 @@
             || /model[^.]{0,40}(not found|does not exist|invalid|decommissioned|unknown)/i.test(String(error.message || ''));
     }
 
+    // Fallo pasajero del servicio (saturacion, 5xx, "provider returned error").
+    // No es culpa de la clave ni del modelo: merece probar otro modelo y, si
+    // no, dejar descansar ese servicio unos minutos.
+    function isTransientError(error) {
+        if (!error) {
+            return false;
+        }
+        if (error.status >= 500) {
+            return true;
+        }
+        const text = String(error.message || '') + ' ' + JSON.stringify(error.body || {});
+        return /high demand|temporarily|unavailable|try again later|overloaded|provider returned error/i.test(text);
+    }
+
     async function callProvider(id, provider, prompt) {
         const modelos = [provider.model].concat(AI_MODELS[id] || [])
             .filter((model, index, all) => model && all.indexOf(model) === index);
@@ -335,7 +355,7 @@
                     quotaError = error;
                     continue;
                 }
-                if (!isModelError(error)) {
+                if (!isModelError(error) && !isTransientError(error)) {
                     throw error;
                 }
             }
@@ -353,13 +373,17 @@
             if (provider.until && provider.until > Date.now()) {
                 continue;
             }
+            if (provider.cool && provider.cool > Date.now()) {
+                continue;
+            }
             try {
                 if (onProvider) {
                     onProvider(id);
                 }
                 const result = await callProvider(id, provider, aiPrompt(text));
-                if (provider.until) {
+                if (provider.until || provider.cool) {
                     provider.until = 0;
+                    provider.cool = 0;
                     saveAI();
                 }
                 return result;
@@ -367,6 +391,11 @@
                 lastError = error;
                 if (isQuotaError(error)) {
                     provider.until = nextDayStart();
+                    saveAI();
+                } else {
+                    // Saturado o con un fallo pasajero: se deja descansar unos
+                    // minutos para no repetir el mismo error en cada trozo.
+                    provider.cool = Date.now() + 10 * 60 * 1000;
                     saveAI();
                 }
             }
@@ -617,6 +646,7 @@
                 const nueva = campo.key.value.trim();
                 if (nueva !== provider.key) {
                     provider.until = 0;
+                    provider.cool = 0;
                 }
                 provider.key = nueva;
                 provider.model = campo.model.value.trim() || provider.model;
