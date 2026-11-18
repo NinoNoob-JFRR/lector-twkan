@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.8.0
+// @version      1.9.0
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @updateURL    https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan.user.js
@@ -364,7 +364,7 @@
         throw quotaError || lastError || new Error('ningun modelo disponible');
     }
 
-    async function requestTranslation(text, onProvider) {
+    async function requestTranslation(text, onProvider, promptOverride) {
         let lastError = null;
         // El servicio que funciono la ultima vez se prueba primero: asi no se
         // pierden segundos en uno que esta saturado en cada capitulo.
@@ -388,7 +388,7 @@
                 if (onProvider) {
                     onProvider(id);
                 }
-                const result = await callProvider(id, provider, aiPrompt(text));
+                const result = await callProvider(id, provider, promptOverride || aiPrompt(text));
                 let cambio = false;
                 if (provider.until || provider.cool) {
                     provider.until = 0;
@@ -480,7 +480,89 @@
         }
     }
 
+    function saveAICacheTitle(title) {
+        try {
+            const raw = localStorage.getItem(AI_CACHE_KEY);
+            const data = raw ? JSON.parse(raw) : {};
+            const key = chapterKey();
+            if (!data[key]) {
+                data[key] = { t: Date.now(), p: [] };
+            }
+            data[key].n = title;
+            localStorage.setItem(AI_CACHE_KEY, JSON.stringify(data));
+        } catch (error) {
+            /* sin espacio: se sigue sin cache */
+        }
+    }
+
+    function readAICacheTitle() {
+        try {
+            const raw = localStorage.getItem(AI_CACHE_KEY);
+            const data = raw ? JSON.parse(raw) : null;
+            const entry = data && data[chapterKey()];
+            return entry && typeof entry.n === 'string' ? entry.n : '';
+        } catch (error) {
+            return '';
+        }
+    }
+
+    // El titulo que muestra el <h1> lleva detras el nombre de la novela, el
+    // autor y el sitio, separados por guiones. El titulo real es lo primero.
+    function headingToTitle() {
+        const raw = (document.querySelector('h1')?.innerText || '').trim();
+        return raw.split(/\s*[-–—]\s*/)[0].trim();
+    }
+
+    function cleanTitle(text) {
+        const line = String(text || '')
+            .split('\n')
+            .map((part) => part.trim())
+            .filter(Boolean)[0] || '';
+        return line
+            .replace(/\*\*/g, '')
+            .replace(/^["'«“]+|["'»”]+$/g, '')
+            .replace(/^titulo:\s*/i, '')
+            .trim();
+    }
+
+    function titlePrompt(text) {
+        return 'Traduce al espanol este titulo de capitulo de una novela china. '
+            + 'Conserva el numero y el formato "Capitulo N" y traduce la parte descriptiva. '
+            + 'Devuelve solo el titulo, en una linea, sin comillas ni comentarios.'
+            + '\n\n' + text;
+    }
+
+    // Escribe el titulo traducido en el <h1> de la pagina, que es donde el
+    // lector mira para saber en que capitulo esta.
+    function paintTitle(text) {
+        const h1 = document.querySelector('h1');
+        if (h1 && text && (h1.innerText || '').trim() !== text) {
+            h1.textContent = text;
+        }
+    }
+
     let aiBusy = false;
+
+    // El titulo se traduce en paralelo con el cuerpo. Es corto, asi que suele
+    // llegar antes y el lector ve enseguida "Capitulo 102: ...". Si falla, se
+    // queda el titulo original: no bloquea la traduccion del capitulo.
+    function translateTitle() {
+        const original = sourceTitle;
+        if (!original) {
+            return;
+        }
+        requestTranslation(original, null, titlePrompt(original))
+            .then((text) => {
+                const limpio = cleanTitle(text);
+                if (limpio) {
+                    paintTitle(limpio);
+                    saveAICacheTitle(limpio);
+                }
+            })
+            .catch(() => {
+                /* titulo sin traducir: se queda el original */
+            });
+    }
 
     async function translateChapter(silent) {
         if (aiBusy) {
@@ -511,6 +593,7 @@
             button.style.opacity = '.6';
         }
         showProgress('Preparando la traduccion...');
+        translateTitle();
         let pintado = false;
         try {
             for (let index = 0; index < chunks.length; index++) {
@@ -1036,6 +1119,9 @@
         const first = paragraphs[0] || '';
         if (first && first.length > 3 && heading.startsWith(first)) {
             paragraphs.shift();
+            if (!sourceTitle) {
+                sourceTitle = first;
+            }
         }
 
         paragraphs = paragraphs.filter((p) => !isWatermark(p));
@@ -1048,6 +1134,8 @@
     // Texto original del capitulo (en chino, ya limpio). Se guarda para poder
     // reaplicar el glosario aunque la pagina ya este traducida.
     let sourceParagraphs = null;
+    // Titulo original del capitulo, sin el nombre de la novela ni del sitio.
+    let sourceTitle = '';
 
     /**
      * Escribe los parrafos en la pagina, ya sea el original o una traduccion.
@@ -1131,6 +1219,13 @@
             const original = collectParagraphs(content);
             if (!sourceParagraphs) {
                 sourceParagraphs = original.slice();
+            }
+            if (!sourceTitle) {
+                sourceTitle = headingToTitle();
+            }
+            const cachedTitle = readAICacheTitle();
+            if (cachedTitle) {
+                paintTitle(cachedTitle);
             }
             // Si este capitulo ya se tradujo con IA, se recuerda y se vuelve a
             // mostrar tal cual: no gasta cuota y se lee al instante.
