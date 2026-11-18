@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.9.4
+// @version      1.9.5
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @updateURL    https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan.user.js
@@ -980,6 +980,30 @@
         return out;
     }
 
+    /**
+     * Deshace una correccion en el texto que ya esta en pantalla, para poder
+     * quitarla sin recargar el capitulo (el texto visible ya la tenia aplicada).
+     */
+    function revertFixOnScreen(pair) {
+        const wrapper = document.querySelector('.lector-limpio');
+        if (!wrapper || !pair || !pair[1] || pair[1] === pair[0]) {
+            return;
+        }
+        const walk = (node) => {
+            if (node.nodeType === 3) {
+                const value = node.nodeValue;
+                if (value && value.indexOf(pair[1]) >= 0) {
+                    node.nodeValue = value.split(pair[1]).join(pair[0]);
+                }
+                return;
+            }
+            for (const child of Array.from(node.childNodes || [])) {
+                walk(child);
+            }
+        };
+        walk(wrapper);
+    }
+
     function fixTextNode(node) {
         if (!fixes.length) {
             return;
@@ -1031,7 +1055,12 @@
     function findContentIn(root) {
         for (const selector of CONTENT_SELECTORS) {
             const element = root.querySelector(selector);
-            if (element && (element.textContent || '').length > 200) {
+            if (!element) {
+                continue;
+            }
+            // Tambien vale si ya es el bloque limpio, aunque el texto sea corto
+            // (un capitulo corto o ya traducido por la IA).
+            if (element.querySelector('.lector-limpio') || (element.textContent || '').length > 200) {
                 return element;
             }
         }
@@ -1412,6 +1441,169 @@
         }
     }
 
+    function closeFixes() {
+        const actual = document.getElementById('lector-fixes');
+        if (actual) {
+            actual.remove();
+        }
+    }
+
+    /**
+     * Ventana de correcciones: lista las que hay (con su boton de borrar) y
+     * permite anadir nuevas sin salir de ella.
+     */
+    function openFixes() {
+        closeFixes();
+        const overlay = document.createElement('div');
+        overlay.id = 'lector-fixes';
+        overlay.style.cssText = 'position:fixed;top:0;right:0;bottom:0;left:0;z-index:2147483647;'
+            + 'background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:12px;';
+
+        const box = document.createElement('div');
+        box.style.cssText = 'background:white;color:rgb(17,17,17);max-width:520px;width:100%;max-height:90vh;'
+            + 'overflow:auto;border-radius:12px;padding:16px;'
+            + 'font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;';
+
+        const title = document.createElement('h2');
+        title.textContent = 'Correcciones';
+        title.style.cssText = 'margin:0 0 6px;font-size:18px;';
+        box.appendChild(title);
+
+        const intro = document.createElement('p');
+        intro.textContent = 'Si el traductor cambia un nombre o una palabra, escribe como sale y como '
+            + 'debe salir. Se aplica a todos los capitulos. Si dejas el segundo campo vacio, la palabra '
+            + 'se quita del texto.';
+        intro.style.cssText = 'margin:0 0 10px;color:rgb(85,85,85);font-size:13px;';
+        box.appendChild(intro);
+
+        const lista = document.createElement('div');
+        lista.style.cssText = 'margin:0 0 12px;';
+        box.appendChild(lista);
+
+        const pintarLista = () => {
+            lista.replaceChildren();
+            if (!fixes.length) {
+                const vacio = document.createElement('p');
+                vacio.textContent = 'Todavia no hay correcciones.';
+                vacio.style.cssText = 'margin:6px 0;color:rgb(120,120,120);font-size:13px;';
+                lista.appendChild(vacio);
+                return;
+            }
+            fixes.forEach((pair, index) => {
+                const fila = document.createElement('div');
+                fila.style.cssText = 'display:flex;gap:8px;align-items:center;'
+                    + 'border-top:1px solid rgb(230,230,230);padding:7px 0;';
+
+                const texto = document.createElement('span');
+                texto.textContent = pair[0] + '  ->  ' + (pair[1] || '(quitarla)');
+                texto.style.cssText = 'flex:1;min-width:0;overflow-wrap:anywhere;font-size:13px;';
+                fila.appendChild(texto);
+
+                const borrar = document.createElement('button');
+                borrar.type = 'button';
+                borrar.textContent = 'Borrar';
+                borrar.style.cssText = 'border:0;border-radius:6px;padding:7px 10px;font:inherit;'
+                    + 'font-size:13px;background:rgb(180,30,30);color:white;cursor:pointer;';
+                borrar.addEventListener('click', () => {
+                    const pair = fixes[index];
+                    fixes.splice(index, 1);
+                    saveFixes();
+                    revertFixOnScreen(pair);
+                    pintarLista();
+                    render();
+                });
+                fila.appendChild(borrar);
+                lista.appendChild(fila);
+            });
+        };
+        pintarLista();
+
+        const form = document.createElement('div');
+        form.style.cssText = 'border-top:1px solid rgb(221,221,221);padding-top:12px;';
+
+        const label = document.createElement('p');
+        label.textContent = 'Anadir una correccion';
+        label.style.cssText = 'margin:0 0 6px;font-weight:600;font-size:13px;';
+        form.appendChild(label);
+
+        const inputStyle = 'width:100%;box-sizing:border-box;padding:8px;margin:0 0 6px;'
+            + 'border:1px solid rgb(204,204,204);border-radius:6px;font:inherit;';
+
+        const desde = document.createElement('input');
+        desde.type = 'text';
+        desde.placeholder = 'Sale como (ej. Han Lu)';
+        desde.spellcheck = false;
+        desde.autocomplete = 'off';
+        desde.style.cssText = inputStyle;
+        form.appendChild(desde);
+
+        const hacia = document.createElement('input');
+        hacia.type = 'text';
+        hacia.placeholder = 'Debe salir (vacio = quitarla)';
+        hacia.spellcheck = false;
+        hacia.autocomplete = 'off';
+        hacia.style.cssText = inputStyle;
+        form.appendChild(hacia);
+
+        const anadir = document.createElement('button');
+        anadir.type = 'button';
+        anadir.textContent = 'Anadir';
+        anadir.style.cssText = 'border:0;border-radius:8px;padding:9px 14px;font:inherit;'
+            + 'background:rgb(31,111,235);color:white;cursor:pointer;';
+        form.appendChild(anadir);
+
+        const guardar = () => {
+            const from = desde.value.trim();
+            const to = hacia.value.trim();
+            if (!from) {
+                desde.focus();
+                return;
+            }
+            const existente = fixes.find((pair) => pair[0] === from);
+            if (existente) {
+                revertFixOnScreen(existente);
+                existente[1] = to;
+            } else {
+                fixes.push([from, to]);
+            }
+            saveFixes();
+            desde.value = '';
+            hacia.value = '';
+            desde.focus();
+            pintarLista();
+            render();
+        };
+        anadir.addEventListener('click', guardar);
+        desde.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                guardar();
+            }
+        });
+        hacia.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                guardar();
+            }
+        });
+        box.appendChild(form);
+
+        const acciones = document.createElement('div');
+        acciones.style.cssText = 'display:flex;justify-content:flex-end;margin-top:14px;';
+        const cerrar = document.createElement('button');
+        cerrar.type = 'button';
+        cerrar.textContent = 'Cerrar';
+        cerrar.style.cssText = 'border:0;border-radius:8px;padding:10px 14px;font:inherit;'
+            + 'background:rgb(87,96,106);color:white;cursor:pointer;';
+        cerrar.addEventListener('click', closeFixes);
+        acciones.appendChild(cerrar);
+        box.appendChild(acciones);
+
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+        desde.focus();
+    }
+
     function buildPanel() {
         if (document.getElementById('lector-twkan-panel')) {
             return;
@@ -1459,24 +1651,7 @@
             splitLongRequested = true;
             render();
         }));
-        panel.appendChild(makeButton('Corregir', 'Arregla nombres o palabras que el traductor cambia', () => {
-            const wrong = prompt('Palabra o nombre que sale mal (tal como se lee ahora):');
-            if (wrong === null || !wrong.trim()) {
-                return;
-            }
-            const from = wrong.trim();
-            const right = prompt('Como debe salir (vacio = borrar esta correccion):', '');
-            if (right === null) {
-                return;
-            }
-            const to = right.trim();
-            fixes = fixes.filter((pair) => pair[0] !== from);
-            if (to) {
-                fixes.push([from, to]);
-            }
-            saveFixes();
-            render();
-        }));
+        panel.appendChild(makeButton('Corregir', 'Ver, anadir y borrar correcciones de palabras', openFixes));
         panel.appendChild(makeButton('Glosario', 'Fija como se traduce un nombre o palabra china', () => {
             const original = prompt('Palabra en chino (tal como sale en el original):');
             if (original === null || !original.trim()) {
