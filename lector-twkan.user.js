@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.7.2
+// @version      1.8.0
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @updateURL    https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan.user.js
@@ -131,12 +131,13 @@
         + 'Devuelves solo la traduccion, con los parrafos separados por una linea en blanco.';
 
     function readAI() {
-        const config = { order: AI_ORDER.slice(), providers: JSON.parse(JSON.stringify(AI_BASE)), auto: false };
+        const config = { order: AI_ORDER.slice(), providers: JSON.parse(JSON.stringify(AI_BASE)), auto: false, lastGood: '' };
         try {
             const raw = localStorage.getItem(AI_KEY);
             const saved = raw ? JSON.parse(raw) : null;
             if (saved && typeof saved === 'object') {
                 config.auto = Boolean(saved.auto);
+                config.lastGood = typeof saved.lastGood === 'string' ? saved.lastGood : '';
                 if (Array.isArray(saved.order)) {
                     const orden = saved.order.filter((id) => config.providers[id]);
                     for (const id of AI_ORDER) {
@@ -234,7 +235,7 @@
                 contents: [{ role: 'user', parts: [{ text: prompt }] }],
                 generationConfig: { temperature: 0.4, maxOutputTokens: 8192 }
             })
-        });
+        }, 30000);
         const candidate = data && data.candidates && data.candidates[0];
         const parts = candidate && candidate.content && candidate.content.parts;
         const text = Array.isArray(parts) ? parts.map((part) => part.text || '').join('') : '';
@@ -261,7 +262,7 @@
                     { role: 'user', content: prompt }
                 ]
             })
-        });
+        }, 30000);
         const choice = data && data.choices && data.choices[0];
         const text = choice && choice.message ? choice.message.content : '';
         if (!text || !text.trim()) {
@@ -365,7 +366,14 @@
 
     async function requestTranslation(text, onProvider) {
         let lastError = null;
-        for (const id of ai.order) {
+        // El servicio que funciono la ultima vez se prueba primero: asi no se
+        // pierden segundos en uno que esta saturado en cada capitulo.
+        const orden = ai.order.slice();
+        if (ai.lastGood && orden.indexOf(ai.lastGood) > 0) {
+            orden.splice(orden.indexOf(ai.lastGood), 1);
+            orden.unshift(ai.lastGood);
+        }
+        for (const id of orden) {
             const provider = ai.providers[id];
             if (!provider || !provider.key) {
                 continue;
@@ -381,9 +389,17 @@
                     onProvider(id);
                 }
                 const result = await callProvider(id, provider, aiPrompt(text));
+                let cambio = false;
                 if (provider.until || provider.cool) {
                     provider.until = 0;
                     provider.cool = 0;
+                    cambio = true;
+                }
+                if (ai.lastGood !== id) {
+                    ai.lastGood = id;
+                    cambio = true;
+                }
+                if (cambio) {
                     saveAI();
                 }
                 return result;
@@ -486,27 +502,43 @@
         if (!source.length) {
             return;
         }
-        const chunks = chunkParagraphs(source, 1400);
+        const chunks = chunkParagraphs(source, 2200);
         const result = [];
         const button = document.getElementById('lector-ia');
         aiBusy = true;
+        if (button) {
+            button.disabled = true;
+            button.style.opacity = '.6';
+        }
+        showProgress('Preparando la traduccion...');
+        let pintado = false;
         try {
             for (let index = 0; index < chunks.length; index++) {
+                const etiqueta = 'Traduciendo ' + (index + 1) + '/' + chunks.length;
                 if (button) {
                     button.textContent = 'IA ' + (index + 1) + '/' + chunks.length;
                 }
+                showProgress(etiqueta + '...');
                 const text = await requestTranslation(chunks[index], (id) => {
                     if (button) {
                         button.textContent = 'IA ' + (index + 1) + '/' + chunks.length;
                         button.title = 'Traduciendo con ' + (AI_NAMES[id] || id);
                     }
+                    showProgress(etiqueta + ' con ' + (AI_NAMES[id] || id));
                 });
-                result.push.apply(result, splitTranslation(text));
+                const trozos = splitTranslation(text);
+                result.push.apply(result, trozos);
+                // Se pinta cada trozo en cuanto llega, para poder empezar a leer
+                // sin esperar a que termine el capitulo entero.
+                if (!pintado) {
+                    pintado = paint(trozos);
+                } else {
+                    appendTranslation(trozos);
+                }
             }
             if (!result.length) {
                 throw new Error('la traduccion vino vacia');
             }
-            paint(result);
             saveAICache(result);
         } catch (error) {
             const usadas = ai.order.filter((id) => ai.providers[id] && ai.providers[id].key);
@@ -523,7 +555,10 @@
             }
         } finally {
             aiBusy = false;
+            hideProgress();
             if (button) {
+                button.disabled = false;
+                button.style.opacity = '';
                 button.textContent = 'IA';
                 if (!silent) {
                     button.title = 'Traduce el capitulo con inteligencia artificial';
@@ -1043,6 +1078,45 @@
         content.replaceChildren(wrapper);
         watchTranslations(wrapper);
         return true;
+    }
+
+    /** Anade mas parrafos al bloque ya pintado (traduccion por trozos). */
+    function appendTranslation(paragraphs) {
+        const wrapper = document.querySelector('.lector-limpio');
+        if (!wrapper || !paragraphs || !paragraphs.length) {
+            return false;
+        }
+        paragraphs.forEach((text) => {
+            if (wrapper.childNodes.length) {
+                wrapper.appendChild(document.createElement('br'));
+                wrapper.appendChild(document.createElement('br'));
+            }
+            wrapper.appendChild(document.createTextNode(applyFixes(text)));
+        });
+        watchTranslations(wrapper);
+        return true;
+    }
+
+    function showProgress(text) {
+        let barra = document.getElementById('lector-progreso');
+        if (!barra) {
+            barra = document.createElement('div');
+            barra.id = 'lector-progreso';
+            barra.style.cssText = 'position:fixed;top:8px;left:50%;transform:translateX(-50%);'
+                + 'z-index:2147483647;background:rgba(24,24,28,.92);color:#fff;'
+                + 'padding:8px 14px;border-radius:999px;'
+                + 'font:13px/1.3 system-ui,-apple-system,Segoe UI,sans-serif;'
+                + 'box-shadow:0 4px 14px rgba(0,0,0,.35);pointer-events:none;max-width:90vw;';
+            document.body.appendChild(barra);
+        }
+        barra.textContent = text;
+    }
+
+    function hideProgress() {
+        const barra = document.getElementById('lector-progreso');
+        if (barra) {
+            barra.remove();
+        }
     }
 
     function render(useSource) {
