@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.7.0
+// @version      1.7.1
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @updateURL    https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan.user.js
@@ -277,6 +277,24 @@
         });
     }
 
+    /**
+     * Mensaje legible de un fallo de la API: Gemini, Groq y OpenRouter meten el
+     * motivo en sitios distintos, pero casi siempre esta en error.message.
+     */
+    function describeAIError(error) {
+        const body = error && error.body;
+        if (body && typeof body === 'object') {
+            const detalle = body.error && (body.error.message || body.error.status);
+            if (detalle) {
+                return String(detalle).slice(0, 220);
+            }
+            if (body.message) {
+                return String(body.message).slice(0, 220);
+            }
+        }
+        return String(error && error.message ? error.message : error).slice(0, 220);
+    }
+
     function isQuotaError(error) {
         if (!error) {
             return false;
@@ -466,7 +484,7 @@
             const agotadas = usadas.filter((id) => ai.providers[id].until > Date.now()).length;
             const aviso = agotadas && agotadas === usadas.length
                 ? 'Todas las IA agotaron su cuota de hoy. Puedes esperar al reinicio o anadir otra clave.'
-                : 'No se pudo traducir: ' + String(error && error.message ? error.message : error).slice(0, 160);
+                : 'No se pudo traducir: ' + describeAIError(error);
             if (silent) {
                 if (button) {
                     button.title = aviso;
@@ -560,7 +578,12 @@
                 + 'border:1px solid rgb(204,204,204);border-radius:6px;font:12px ui-monospace,Consolas,monospace;';
             row.appendChild(model);
 
-            campos.push({ id, key, model });
+            const status = document.createElement('p');
+            status.style.cssText = 'margin:6px 0 0;font-size:12px;line-height:1.35;'
+                + 'white-space:pre-wrap;color:rgb(85,85,85);';
+            row.appendChild(status);
+
+            campos.push({ id, key, model, status });
             return row;
         };
 
@@ -602,6 +625,32 @@
         };
 
         actions.appendChild(makeAction('Cerrar', 'rgb(87,96,106)', closeAISettings));
+        const probarBoton = makeAction('Probar claves', 'rgb(87,96,106)', async () => {
+            guardarCampos();
+            probarBoton.disabled = true;
+            probarBoton.textContent = 'Probando...';
+            for (const campo of campos) {
+                const provider = ai.providers[campo.id];
+                campo.status.style.color = 'rgb(85,85,85)';
+                campo.status.textContent = '';
+                if (!provider.key) {
+                    campo.status.textContent = 'Sin clave: no se prueba.';
+                    continue;
+                }
+                campo.status.textContent = 'Probando ' + provider.model + '...';
+                try {
+                    const salida = await callProvider(campo.id, Object.assign({}, provider), 'Responde solo: ok');
+                    campo.status.style.color = 'rgb(26,127,55)';
+                    campo.status.textContent = 'Bien: ' + salida.trim().slice(0, 60);
+                } catch (error) {
+                    campo.status.style.color = 'rgb(180,30,30)';
+                    campo.status.textContent = 'Falla: ' + describeAIError(error);
+                }
+            }
+            probarBoton.disabled = false;
+            probarBoton.textContent = 'Probar claves';
+        });
+        actions.appendChild(probarBoton);
         actions.appendChild(makeAction('Guardar', 'rgb(31,111,235)', () => {
             guardarCampos();
             closeAISettings();
