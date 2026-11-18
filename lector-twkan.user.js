@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.9.0
+// @version      1.9.1
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @updateURL    https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan.user.js
@@ -469,10 +469,15 @@
         try {
             const raw = localStorage.getItem(AI_CACHE_KEY);
             const data = raw ? JSON.parse(raw) : {};
-            data[chapterKey()] = { t: Date.now(), p: paragraphs };
+            const key = chapterKey();
+            const previo = data[key] || {};
+            data[key] = { t: Date.now(), p: paragraphs };
+            if (previo.n) {
+                data[key].n = previo.n;
+            }
             const keys = Object.keys(data).sort((a, b) => (data[b].t || 0) - (data[a].t || 0));
-            for (const key of keys.slice(30)) {
-                delete data[key];
+            for (const key2 of keys.slice(30)) {
+                delete data[key2];
             }
             localStorage.setItem(AI_CACHE_KEY, JSON.stringify(data));
         } catch (error) {
