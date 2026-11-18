@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.9.2
+// @version      1.9.3
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @updateURL    https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan.user.js
@@ -141,6 +141,7 @@
             order: AI_ORDER.slice(),
             providers: JSON.parse(JSON.stringify(AI_BASE)),
             auto: false,
+            prefetch: true,
             lastGood: ''
         };
         try {
@@ -149,6 +150,7 @@
             if (saved && typeof saved === 'object') {
                 const migrar = Number(saved.v || 1) < AI_CONFIG_VERSION;
                 config.auto = Boolean(saved.auto);
+                config.prefetch = saved.prefetch !== false;
                 config.lastGood = typeof saved.lastGood === 'string' ? saved.lastGood : '';
                 if (Array.isArray(saved.order)) {
                     const orden = saved.order.filter((id) => config.providers[id]);
@@ -508,30 +510,38 @@
         return chunks;
     }
 
-    function chapterKey() {
-        return location.pathname + location.search;
+    function chapterKey(href) {
+        if (!href) {
+            return location.pathname + location.search;
+        }
+        try {
+            const url = new URL(href, location.href);
+            return url.pathname + url.search;
+        } catch (error) {
+            return location.pathname + location.search;
+        }
     }
 
-    function readAICache() {
+    function readAICache(key) {
         try {
             const raw = localStorage.getItem(AI_CACHE_KEY);
             const data = raw ? JSON.parse(raw) : null;
-            const entry = data && data[chapterKey()];
+            const entry = data && data[key || chapterKey()];
             return entry && Array.isArray(entry.p) && entry.p.length ? entry.p : null;
         } catch (error) {
             return null;
         }
     }
 
-    function saveAICache(paragraphs) {
+    function saveAICache(paragraphs, key) {
         try {
             const raw = localStorage.getItem(AI_CACHE_KEY);
             const data = raw ? JSON.parse(raw) : {};
-            const key = chapterKey();
-            const previo = data[key] || {};
-            data[key] = { t: Date.now(), p: paragraphs };
+            const destino = key || chapterKey();
+            const previo = data[destino] || {};
+            data[destino] = { t: Date.now(), p: paragraphs };
             if (previo.n) {
-                data[key].n = previo.n;
+                data[destino].n = previo.n;
             }
             const keys = Object.keys(data).sort((a, b) => (data[b].t || 0) - (data[a].t || 0));
             for (const key2 of keys.slice(30)) {
@@ -543,26 +553,26 @@
         }
     }
 
-    function saveAICacheTitle(title) {
+    function saveAICacheTitle(title, key) {
         try {
             const raw = localStorage.getItem(AI_CACHE_KEY);
             const data = raw ? JSON.parse(raw) : {};
-            const key = chapterKey();
-            if (!data[key]) {
-                data[key] = { t: Date.now(), p: [] };
+            const destino = key || chapterKey();
+            if (!data[destino]) {
+                data[destino] = { t: Date.now(), p: [] };
             }
-            data[key].n = title;
+            data[destino].n = title;
             localStorage.setItem(AI_CACHE_KEY, JSON.stringify(data));
         } catch (error) {
             /* sin espacio: se sigue sin cache */
         }
     }
 
-    function readAICacheTitle() {
+    function readAICacheTitle(key) {
         try {
             const raw = localStorage.getItem(AI_CACHE_KEY);
             const data = raw ? JSON.parse(raw) : null;
-            const entry = data && data[chapterKey()];
+            const entry = data && data[key || chapterKey()];
             return entry && typeof entry.n === 'string' ? entry.n : '';
         } catch (error) {
             return '';
@@ -649,6 +659,21 @@
         if (!source.length) {
             return;
         }
+        // Si el capitulo ya esta traducido y no se esta viendo el original, no
+        // gasta cuota: se repinta al instante. Despues de tocar el glosario si
+        // se ve el texto chino, y entonces si se vuelve a traducir.
+        const cached = readAICache();
+        if (cached && !sourceVisible) {
+            paint(cached);
+            const cachedTitle = readAICacheTitle();
+            if (cachedTitle) {
+                paintTitle(cachedTitle);
+            } else if (sourceTitle) {
+                await translateTitle();
+            }
+            return;
+        }
+        sourceVisible = false;
         const chunks = chunkParagraphs(source, 2200);
         const result = [];
         const button = document.getElementById('lector-ia');
@@ -691,6 +716,8 @@
                 throw new Error('la traduccion vino vacia');
             }
             saveAICache(result);
+            // Mientras se lee este capitulo, se deja listo el siguiente.
+            schedulePrefetch(1500);
         } catch (error) {
             const usadas = ai.order.filter((id) => ai.providers[id] && ai.providers[id].key);
             const ahora = Date.now();
@@ -776,6 +803,20 @@
         autoRow.appendChild(autoText);
         box.appendChild(autoRow);
 
+        const prefetchRow = document.createElement('label');
+        prefetchRow.style.cssText = 'display:flex;gap:8px;align-items:flex-start;margin:0 0 10px;'
+            + 'font-size:13px;line-height:1.35;cursor:pointer;';
+        const prefetchBox = document.createElement('input');
+        prefetchBox.type = 'checkbox';
+        prefetchBox.checked = ai.prefetch !== false;
+        prefetchBox.style.cssText = 'margin:2px 0 0;flex:0 0 auto;';
+        const prefetchText = document.createElement('span');
+        prefetchText.textContent = 'Traducir tambien el capitulo siguiente mientras lees. '
+            + 'Asi aparece al instante al pasar de capitulo, pero gasta la cuota algo antes.';
+        prefetchRow.appendChild(prefetchBox);
+        prefetchRow.appendChild(prefetchText);
+        box.appendChild(prefetchRow);
+
         const campos = [];
 
         const buildRow = (id) => {
@@ -840,6 +881,7 @@
 
         const guardarCampos = () => {
             ai.auto = autoBox.checked;
+            ai.prefetch = prefetchBox.checked;
             for (const campo of campos) {
                 const provider = ai.providers[campo.id];
                 const nueva = campo.key.value.trim();
@@ -979,14 +1021,18 @@
         translationWatcher.observe(wrapper, { subtree: true, childList: true, characterData: true });
     }
 
-    function findContent() {
+    function findContentIn(root) {
         for (const selector of CONTENT_SELECTORS) {
-            const element = document.querySelector(selector);
-            if (element && (element.innerText || '').length > 200) {
+            const element = root.querySelector(selector);
+            if (element && (element.textContent || '').length > 200) {
                 return element;
             }
         }
         return null;
+    }
+
+    function findContent() {
+        return findContentIn(document);
     }
 
     function isWatermark(text) {
@@ -1212,11 +1258,39 @@
         return paragraphs;
     }
 
+    /**
+     * Lo mismo que collectParagraphs, pero sobre una pagina ya descargada
+     * (el capitulo siguiente) en vez de la que se esta viendo.
+     */
+    function paragraphsOfDocument(doc) {
+        const root = findContentIn(doc);
+        if (!root) {
+            return null;
+        }
+        const heading = (doc.querySelector('h1')?.textContent || '').trim();
+        let paragraphs = splitParagraphs(htmlToText(root.innerHTML), heading);
+        const first = paragraphs[0] || '';
+        if (first && first.length > 3 && heading.startsWith(first)) {
+            paragraphs.shift();
+        }
+        paragraphs = paragraphs.filter((p) => !isWatermark(p));
+        if (splitLongRequested) {
+            paragraphs = paragraphs.flatMap(splitLongParagraph);
+        }
+        // El <h1> suele ser solo "第103章 賊喊捉賊"; si trae el nombre de la
+        // novela detras, se quita igual que en la pagina abierta.
+        const title = heading.split(/\s*[-–—]\s*/)[0].trim();
+        return { paragraphs, title };
+    }
+
     // Texto original del capitulo (en chino, ya limpio). Se guarda para poder
     // reaplicar el glosario aunque la pagina ya este traducida.
     let sourceParagraphs = null;
     // Titulo original del capitulo, sin el nombre de la novela ni del sitio.
     let sourceTitle = '';
+    // True cuando en pantalla se ve el texto original (p. ej. tras el glosario):
+    // en ese caso pulsar IA si debe traducir de nuevo.
+    let sourceVisible = false;
 
     /**
      * Escribe los parrafos en la pagina, ya sea el original o una traduccion.
@@ -1295,8 +1369,10 @@
         }
         let paragraphs;
         if (useSource && sourceParagraphs) {
+            sourceVisible = true;
             paragraphs = sourceParagraphs.map(applyGlossary);
         } else {
+            sourceVisible = false;
             const original = collectParagraphs(content);
             if (!sourceParagraphs) {
                 sourceParagraphs = original.slice();
@@ -1442,12 +1518,100 @@
         setTimeout(() => translateChapter(true), 1500);
     }
 
+    // ---------------------------------------------------------------------
+    // Precarga del capitulo siguiente.
+    //
+    // Mientras lees uno, se descarga el siguiente (es una pagina pequena y del
+    // mismo sitio) y se traduce en segundo plano. Cuando pulsas "siguiente",
+    // el texto ya esta en la cache y aparece al instante, sin esperar a la IA.
+    // ---------------------------------------------------------------------
+    let prefetchBusy = false;
+    let prefetchIntentos = 0;
+
+    function nextChapterHref() {
+        const links = Array.from(document.querySelectorAll('a'));
+        const candidatos = links.filter((link) => {
+            const texto = (link.textContent || '').trim();
+            return /^下一[章頁页]?$/.test(texto);
+        });
+        const link = candidatos.find((a) => a.href && a.href !== location.href);
+        return link ? link.href : '';
+    }
+
+    async function prefetchNext() {
+        if (prefetchBusy || ai.prefetch === false || !hasAIKey()) {
+            return;
+        }
+        if (aiBusy) {
+            // La traduccion del capitulo que estas leyendo manda: se prueba
+            // otra vez cuando termine.
+            if (prefetchIntentos < 20) {
+                prefetchIntentos += 1;
+                setTimeout(prefetchNext, 3000);
+            }
+            return;
+        }
+        const href = nextChapterHref();
+        if (!href) {
+            return;
+        }
+        const key = chapterKey(href);
+        if (key === chapterKey() || readAICache(key)) {
+            return;
+        }
+        prefetchBusy = true;
+        prefetchIntentos = 0;
+        try {
+            const response = await fetch(href, { credentials: 'include' });
+            if (!response.ok) {
+                return;
+            }
+            const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+            const parsed = paragraphsOfDocument(doc);
+            if (!parsed || !parsed.paragraphs.length) {
+                return;
+            }
+            const chunks = chunkParagraphs(parsed.paragraphs, 2200);
+            const result = [];
+            for (const chunk of chunks) {
+                result.push.apply(result, splitTranslation(await requestTranslation(chunk)));
+            }
+            if (!result.length) {
+                return;
+            }
+            saveAICache(result, key);
+            if (parsed.title) {
+                try {
+                    const limpio = cleanTitle(await requestTranslation(parsed.title, null, titlePrompt(parsed.title)));
+                    if (limpio) {
+                        saveAICacheTitle(limpio, key);
+                    }
+                } catch (error) {
+                    /* el titulo se traducira al abrir ese capitulo */
+                }
+            }
+        } catch (error) {
+            /* sin precarga: ese capitulo se traducira al abrirlo */
+        } finally {
+            prefetchBusy = false;
+        }
+    }
+
+    function schedulePrefetch(delay) {
+        if (ai.prefetch === false || !hasAIKey()) {
+            return;
+        }
+        prefetchIntentos = 0;
+        setTimeout(prefetchNext, delay);
+    }
+
     let attempts = 0;
     const timer = setInterval(() => {
         if (render()) {
             clearInterval(timer);
             buildPanel();
             autoTranslate();
+            schedulePrefetch(5000);
             return;
         }
         attempts += 1;
