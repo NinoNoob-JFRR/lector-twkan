@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.9.1
+// @version      1.9.2
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @updateURL    https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan.user.js
@@ -130,12 +130,24 @@
         + 'Traduces con naturalidad, mantienes los nombres propios en pinyin y no anades comentarios. '
         + 'Devuelves solo la traduccion, con los parrafos separados por una linea en blanco.';
 
+    // Version del formato de configuracion. La 1 marcaba como "cuota del dia"
+    // cualquier error 429, incluso el limite por minuto, asi que al subir a la
+    // 2 se borran una sola vez esas marcas falsas de "hasta manana".
+    const AI_CONFIG_VERSION = 2;
+
     function readAI() {
-        const config = { order: AI_ORDER.slice(), providers: JSON.parse(JSON.stringify(AI_BASE)), auto: false, lastGood: '' };
+        const config = {
+            v: AI_CONFIG_VERSION,
+            order: AI_ORDER.slice(),
+            providers: JSON.parse(JSON.stringify(AI_BASE)),
+            auto: false,
+            lastGood: ''
+        };
         try {
             const raw = localStorage.getItem(AI_KEY);
             const saved = raw ? JSON.parse(raw) : null;
             if (saved && typeof saved === 'object') {
+                const migrar = Number(saved.v || 1) < AI_CONFIG_VERSION;
                 config.auto = Boolean(saved.auto);
                 config.lastGood = typeof saved.lastGood === 'string' ? saved.lastGood : '';
                 if (Array.isArray(saved.order)) {
@@ -152,8 +164,15 @@
                     if (guardado) {
                         config.providers[id].key = String(guardado.key || '');
                         config.providers[id].model = String(guardado.model || config.providers[id].model);
-                        config.providers[id].until = Number(guardado.until || 0) || 0;
-                        config.providers[id].cool = Number(guardado.cool || 0) || 0;
+                        config.providers[id].until = migrar ? 0 : Number(guardado.until || 0) || 0;
+                        config.providers[id].cool = migrar ? 0 : Number(guardado.cool || 0) || 0;
+                    }
+                }
+                if (migrar) {
+                    try {
+                        localStorage.setItem(AI_KEY, JSON.stringify(config));
+                    } catch (error) {
+                        /* se migrara en el siguiente guardado */
                     }
                 }
             }
@@ -180,6 +199,41 @@
     function nextDayStart() {
         const now = new Date();
         return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
+    }
+
+    /**
+     * Cuanto hay que esperar segun el propio servicio. Gemini lo manda en
+     * error.details[].retryDelay ("37s"); Groq lo dice en el texto ("try again
+     * in 2s"). Si no viene, un minuto es una espera prudente.
+     */
+    function retryDelayMs(error) {
+        const body = error && error.body;
+        const detalles = body && body.error && body.error.details;
+        if (Array.isArray(detalles)) {
+            for (const detalle of detalles) {
+                if (detalle && detalle.retryDelay) {
+                    const segundos = String(detalle.retryDelay).match(/([\d.]+)\s*s/);
+                    if (segundos) {
+                        return Math.max(2000, parseFloat(segundos[1]) * 1000);
+                    }
+                }
+            }
+        }
+        const texto = String(error && error.message || '') + ' ' + JSON.stringify(body || {});
+        const espera = texto.match(/try again in\s+([\d.]+)\s*(ms|s|m|h)?/i);
+        if (espera) {
+            const cantidad = parseFloat(espera[1]);
+            const unidad = (espera[2] || 's').toLowerCase();
+            const factor = unidad === 'ms' ? 1 : unidad === 'm' ? 60000 : unidad === 'h' ? 3600000 : 1000;
+            return Math.max(2000, cantidad * factor);
+        }
+        return 60000;
+    }
+
+    /** Solo es cuota del dia si el servicio lo dice: RPM/TPM no lo son. */
+    function isDailyQuotaError(error) {
+        const texto = String(error && error.message || '') + ' ' + JSON.stringify(error && error.body || {});
+        return /per[- ]?day|daily|\brpd\b|\btpd\b|requests per day|tokens per day|perday/i.test(texto);
     }
 
     function aiPrompt(text) {
@@ -405,15 +459,19 @@
                 return result;
             } catch (error) {
                 lastError = error;
-                if (isQuotaError(error)) {
+                if (isDailyQuotaError(error)) {
+                    // Cuota del dia: hasta el reinicio de manana.
                     provider.until = nextDayStart();
-                    saveAI();
+                } else if (isQuotaError(error)) {
+                    // Limite por minuto (RPM/TPM): un respiro corto, lo que
+                    // pida el propio servicio. No es la cuota del dia.
+                    provider.cool = Date.now() + retryDelayMs(error);
                 } else {
                     // Saturado o con un fallo pasajero: se deja descansar unos
                     // minutos para no repetir el mismo error en cada trozo.
                     provider.cool = Date.now() + 10 * 60 * 1000;
-                    saveAI();
                 }
+                saveAI();
             }
         }
         throw lastError || new Error('no hay ninguna IA con clave');
@@ -548,25 +606,27 @@
 
     let aiBusy = false;
 
-    // El titulo se traduce en paralelo con el cuerpo. Es corto, asi que suele
-    // llegar antes y el lector ve enseguida "Capitulo 102: ...". Si falla, se
-    // queda el titulo original: no bloquea la traduccion del capitulo.
-    function translateTitle() {
+    // El titulo se traduce antes que el cuerpo: es una peticion muy corta y
+    // deja claro en que capitulo estas. Va en serie con el cuerpo (no en
+    // paralelo) para no disparar el limite de peticiones por minuto de los
+    // planes gratuitos. Si falla, se queda el original y el capitulo sigue.
+    async function translateTitle() {
         const original = sourceTitle;
         if (!original) {
-            return;
+            return false;
         }
-        requestTranslation(original, null, titlePrompt(original))
-            .then((text) => {
-                const limpio = cleanTitle(text);
-                if (limpio) {
-                    paintTitle(limpio);
-                    saveAICacheTitle(limpio);
-                }
-            })
-            .catch(() => {
-                /* titulo sin traducir: se queda el original */
-            });
+        try {
+            const text = await requestTranslation(original, null, titlePrompt(original));
+            const limpio = cleanTitle(text);
+            if (limpio) {
+                paintTitle(limpio);
+                saveAICacheTitle(limpio);
+                return true;
+            }
+        } catch (error) {
+            /* titulo sin traducir: se queda el original */
+        }
+        return false;
     }
 
     async function translateChapter(silent) {
@@ -598,9 +658,12 @@
             button.style.opacity = '.6';
         }
         showProgress('Preparando la traduccion...');
-        translateTitle();
         let pintado = false;
         try {
+            if (sourceTitle) {
+                showProgress('Traduciendo el titulo...');
+                await translateTitle();
+            }
             for (let index = 0; index < chunks.length; index++) {
                 const etiqueta = 'Traduciendo ' + (index + 1) + '/' + chunks.length;
                 if (button) {
@@ -630,10 +693,23 @@
             saveAICache(result);
         } catch (error) {
             const usadas = ai.order.filter((id) => ai.providers[id] && ai.providers[id].key);
-            const agotadas = usadas.filter((id) => ai.providers[id].until > Date.now()).length;
-            const aviso = agotadas && agotadas === usadas.length
-                ? 'Todas las IA agotaron su cuota de hoy. Puedes esperar al reinicio o anadir otra clave.'
-                : 'No se pudo traducir: ' + describeAIError(error);
+            const ahora = Date.now();
+            const agotadas = usadas.filter((id) => ai.providers[id].until > ahora).length;
+            const esperando = usadas.filter((id) => {
+                const provider = ai.providers[id];
+                return !(provider.until > ahora) && provider.cool > ahora;
+            }).length;
+            let aviso;
+            if (usadas.length && agotadas === usadas.length) {
+                aviso = 'Las IA agotaron su cuota de hoy: se reinicia manana. '
+                    + 'Puedes anadir otra clave en el boton de ajustes.';
+            } else if (usadas.length && agotadas + esperando === usadas.length) {
+                // Limite por minuto, no cuota del dia: solo hay que esperar un poco.
+                aviso = 'Las IA estan limitadas ahora mismo (limite por minuto). '
+                    + 'Espera un minuto y vuelve a pulsar IA.';
+            } else {
+                aviso = 'No se pudo traducir: ' + describeAIError(error);
+            }
             if (silent) {
                 if (button) {
                     button.title = aviso;
