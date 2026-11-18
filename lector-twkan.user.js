@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.9.3
+// @version      1.9.4
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @updateURL    https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan.user.js
@@ -12,6 +12,13 @@
 
 (function () {
     'use strict';
+
+    // Si la version simple ya esta actuando en esta pagina, esta no se duplica.
+    // Asi se pueden tener las dos instaladas y alternar en Tampermonkey.
+    if (window.__lectorTwkanActivo) {
+        return;
+    }
+    window.__lectorTwkanActivo = true;
 
     const CONTENT_SELECTORS = [
         '#txtcontent0', '#txtcontent', '.txtcontent', '#chaptercontent', '.read-content'
