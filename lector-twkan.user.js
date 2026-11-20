@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.9.7
+// @version      1.9.8
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @updateURL    https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan.user.js
@@ -54,12 +54,18 @@
     function readFixes() {
         try {
             const raw = localStorage.getItem(FIXES_KEY);
-            const list = raw ? JSON.parse(raw) : [];
+            // Sin nada guardado se usan las reparaciones de fabrica (la web
+            // sirve "AP" donde deberia decir "API"). En cuanto el usuario
+            // guarda su lista, aunque la deje vacia, mandan sus datos.
+            if (!raw) {
+                return null;
+            }
+            const list = JSON.parse(raw);
             return Array.isArray(list)
                 ? list.filter((pair) => Array.isArray(pair) && pair[0]).map((pair) => [String(pair[0]), String(pair[1] || '')])
                 : [];
         } catch (error) {
-            return [];
+            return null;
         }
     }
 
@@ -71,7 +77,16 @@
         }
     }
 
+    // Reparaciones de fabrica. La web recorta "API" y deja "AP" en todo el
+    // capitulo. Se aplican como una correccion mas: salen en Corregir y se
+    // pueden borrar.
+    const DEFAULT_FIXES = [['AP', 'API']];
+
     let fixes = readFixes();
+    if (!fixes) {
+        fixes = DEFAULT_FIXES.map((pair) => pair.slice());
+        saveFixes();
+    }
 
     // Glosario: se aplica al texto chino ANTES de traducirlo. Un nombre o una
     // marca escrita en latino el traductor la respeta siempre, asi que esto
@@ -955,11 +970,17 @@
         }
     }
 
-    function replaceOnce(text, from, to) {
+    // Solo se sustituye la palabra completa cuando la correccion es latina:
+    // asi "AP" no convierte "APP" en "APIP" ni "Han" rompe "Hangzhou".
+    const LATIN_TERM = /^[A-Za-z0-9]+$/;
+    const LATIN_CHAR = /[A-Za-z0-9]/;
+
+    function replaceAll(text, from, to, keepLonger) {
         if (!from) {
             return text;
         }
-        const rest = to.startsWith(from) ? to.slice(from.length) : null;
+        const word = LATIN_TERM.test(from);
+        const rest = keepLonger && to.startsWith(from) ? to.slice(from.length) : null;
         let out = '';
         let index = 0;
         for (;;) {
@@ -968,10 +989,23 @@
                 return out + text.slice(index);
             }
             out += text.slice(index, found);
+            if (word) {
+                const before = found > 0 ? text.charAt(found - 1) : '';
+                const after = text.charAt(found + from.length);
+                if (LATIN_CHAR.test(before) || LATIN_CHAR.test(after)) {
+                    out += from;
+                    index = found + from.length;
+                    continue;
+                }
+            }
             const already = rest && text.startsWith(rest, found + from.length);
             out += already ? from : to;
             index = found + from.length;
         }
+    }
+
+    function replaceOnce(text, from, to) {
+        return replaceAll(text, from, to, true);
     }
 
     function applyFixes(text) {
@@ -995,7 +1029,7 @@
             if (node.nodeType === 3) {
                 const value = node.nodeValue;
                 if (value && value.indexOf(pair[1]) >= 0) {
-                    node.nodeValue = value.split(pair[1]).join(pair[0]);
+                    node.nodeValue = replaceAll(value, pair[1], pair[0], false);
                 }
                 return;
             }
