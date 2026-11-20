@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.9.8
+// @version      1.9.9
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @updateURL    https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan.user.js
@@ -81,11 +81,23 @@
     // capitulo. Se aplican como una correccion mas: salen en Corregir y se
     // pueden borrar.
     const DEFAULT_FIXES = [['AP', 'API']];
+    // Marca de version de las reparaciones ya incorporadas, para no volver a
+    // anadirlas si el usuario las borra.
+    const FIXES_SEED_KEY = 'lectorTwkan.fixesSeed.v1';
 
-    let fixes = readFixes();
-    if (!fixes) {
-        fixes = DEFAULT_FIXES.map((pair) => pair.slice());
-        saveFixes();
+    let fixes = readFixes() || [];
+    try {
+        if (Number(localStorage.getItem(FIXES_SEED_KEY) || 0) < 1) {
+            for (const pair of DEFAULT_FIXES) {
+                if (!fixes.some((existente) => existente[0] === pair[0])) {
+                    fixes.push(pair.slice());
+                }
+            }
+            localStorage.setItem(FIXES_SEED_KEY, '1');
+            saveFixes();
+        }
+    } catch (error) {
+        /* almacenamiento no disponible */
     }
 
     // Glosario: se aplica al texto chino ANTES de traducirlo. Un nombre o una
