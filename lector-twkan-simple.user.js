@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan (simple)
 // @namespace    lector-twkan.simple.local
-// @version      1.0.1
+// @version      1.0.2
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua. Solo formato, tamano de letra y correcciones.
 // @match        *://*.twkan.com/txt/*
 // @updateURL    https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan-simple.user.js
@@ -274,6 +274,14 @@
     }
 
     /**
+     * Lineas sueltas de la web ("RT", ">", "OK"): no son una frase cortada a
+     * la mitad, asi que no deben pegarse al parrafo siguiente.
+     */
+    function isStandaloneLine(part) {
+        return /^[\x20-\x7e]{1,4}$/.test(part) && !/^[0-9.,'"/:-]+$/.test(part);
+    }
+
+    /**
      * Une las lineas de un mismo parrafo. Los saltos sueltos solo son cortes
      * de linea de la web: no deben dejar espacios dentro de una palabra.
      */
@@ -312,7 +320,8 @@
         for (const part of parts) {
             const previous = paragraphs[paragraphs.length - 1];
             const cortada = previous && !TERMINAL_PUNCTUATION.test(previous)
-                && !HEADING_LINE.test(previous);
+                && !HEADING_LINE.test(previous)
+                && !isStandaloneLine(previous);
             if (cortada) {
                 paragraphs[paragraphs.length - 1] = joinText(previous, part);
             } else {
