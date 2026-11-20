@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan
 // @namespace    lector-twkan.local
-// @version      1.9.6
+// @version      1.9.7
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua y con espaciado uniforme.
 // @match        *://*.twkan.com/txt/*
 // @updateURL    https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan.user.js
@@ -134,7 +134,8 @@
         ]
     };
     const AI_SYSTEM = 'Eres un traductor literario de chino a espanol, especializado en novelas web. '
-        + 'Traduces con naturalidad, mantienes los nombres propios en pinyin y no anades comentarios. '
+        + 'Traduces de forma fiel y completa: no resumes, no omites frases y no anades ideas que no esten en el original. '
+        + 'Mantienes los nombres propios en pinyin y no anades comentarios. '
         + 'Devuelves solo la traduccion, con los parrafos separados por una linea en blanco.';
 
     // Version del formato de configuracion. La 1 marcaba como "cuota del dia"
@@ -252,6 +253,7 @@
             .join('; ');
         let prompt = 'Traduce al espanol este fragmento de una novela web china. '
             + 'Manten el tono de novela, los dialogos y los parrafos. '
+            + 'Se fiel al original: traduce todas las frases en el mismo orden, sin resumir, sin omitir y sin ampliar. '
             + 'Escribe los nombres propios en pinyin y se consistente. '
             + 'No anadas titulos, notas ni explicaciones. '
             + 'Separa los parrafos con una linea en blanco.';
@@ -1156,6 +1158,14 @@
     }
 
     /**
+     * Lineas sueltas de la web ("RT", ">", "OK"): no son una frase cortada a
+     * la mitad, asi que no deben pegarse al parrafo siguiente.
+     */
+    function isStandaloneLine(part) {
+        return /^[\x20-\x7e]{1,4}$/.test(part) && !/^[0-9.,'"/:-]+$/.test(part);
+    }
+
+    /**
      * Une las lineas de un mismo parrafo. Los saltos sueltos solo son cortes
      * de linea de la web: no deben dejar espacios dentro de una palabra.
      */
@@ -1194,7 +1204,8 @@
         for (const part of parts) {
             const previous = paragraphs[paragraphs.length - 1];
             const cortada = previous && !TERMINAL_PUNCTUATION.test(previous)
-                && !HEADING_LINE.test(previous);
+                && !HEADING_LINE.test(previous)
+                && !isStandaloneLine(previous);
             if (cortada) {
                 paragraphs[paragraphs.length - 1] = joinText(previous, part);
             } else {
