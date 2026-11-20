@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan (simple)
 // @namespace    lector-twkan.simple.local
-// @version      1.0.4
+// @version      1.0.5
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua. Solo formato, tamano de letra y correcciones.
 // @match        *://*.twkan.com/txt/*
 // @updateURL    https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan-simple.user.js
@@ -136,10 +136,27 @@
         return replaceAll(text, from, to, true);
     }
 
+    // Correcciones de una sola letra ("A" -> "AI"): solo se aplican al texto
+    // original. En espanol una "A" suelta es una preposicion ("A veces") y
+    // aplicarla sobre la traduccion la estropearia.
+    const SINGLE_LETTER = /^[A-Za-z]$/;
+
+    function applySourceFixes(text) {
+        let out = text;
+        for (const pair of fixes) {
+            if (SINGLE_LETTER.test(pair[0])) {
+                out = replaceOnce(out, pair[0], pair[1]);
+            }
+        }
+        return out;
+    }
+
     function applyFixes(text) {
         let out = text;
         for (const pair of fixes) {
-            out = replaceOnce(out, pair[0], pair[1]);
+            if (!SINGLE_LETTER.test(pair[0])) {
+                out = replaceOnce(out, pair[0], pair[1]);
+            }
         }
         return out;
     }
@@ -247,7 +264,7 @@
         if (/^[（(]?\s*[請请]記住/.test(text)) {
             return true;
         }
-        if (/台灣小說網|台湾小说网/.test(text)) {
+        if (/台灣小說網|臺灣小說網|台灣小説網|臺灣小説網|台湾小说网/.test(text)) {
             return true;
         }
         if (/解書荒|解书荒/.test(text)) {
@@ -266,10 +283,16 @@
     // La marca no siempre ocupa su propio parrafo: a veces va pegada al
     // principio del texto real ("GOOGLE搜索TWKAN劉彧起身..."). Por eso ademas de
     // descartar el parrafo entero hay que borrar la marca dentro del texto.
-    const WATERMARK_INLINE = /(?:GOOGLE\s*搜索\s*TWKAN|GOOGLE\s*搜索|谷歌搜索\s*TWKAN|搜索\s*TWKAN|WWW\.TWKAN\.COM|TWKAN\.COM|twkan\.com)/gi;
+    const WATERMARK_INLINE = /(?:GOOGLE\s*搜索\s*TWKAN|GOOGLE\s*搜索|谷歌搜索\s*TWKAN|搜索\s*TWKAN|WWW\.TWKAN\.COM|TWKAN\.COM|twkan\.com|臺灣小説網|臺灣小說網|台灣小說網|台灣小説網|台湾小说网)/gi;
+
+    // La web escribe el dominio con letras "negrita" de Unicode
+    // (𝘁𝘄𝗸𝗮𝗻.𝗰𝗼𝗺), que no coinciden con las letras normales.
+    const WATERMARK_BOLD_DOMAIN = /[→⟶➜]\s*[\u{1D400}-\u{1D7FF}][\u{1D400}-\u{1D7FF}.]*/gu;
 
     function stripWatermarks(text) {
-        return text.replace(WATERMARK_INLINE, '');
+        return text
+            .replace(WATERMARK_INLINE, '')
+            .replace(WATERMARK_BOLD_DOMAIN, '');
     }
 
     function htmlToText(html) {
@@ -446,7 +469,8 @@
         const paragraphs = clean
             ? readRendered(clean)
             : splitParagraphs(htmlToText(root.innerHTML), heading);
-        return paragraphs.map(stripWatermarks).filter((p) => p && !isWatermark(p));
+        return paragraphs.map(stripWatermarks).map(applySourceFixes)
+            .filter((p) => p && !isWatermark(p));
     }
 
     /**
