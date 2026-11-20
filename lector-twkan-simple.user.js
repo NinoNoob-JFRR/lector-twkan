@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lector limpio para twkan (simple)
 // @namespace    lector-twkan.simple.local
-// @version      1.0.0
+// @version      1.0.1
 // @description  Reestructura los capitulos de twkan.com en parrafos limpios, sin anuncios ni marcas de agua. Solo formato, tamano de letra y correcciones.
 // @match        *://*.twkan.com/txt/*
 // @updateURL    https://ninonoob-jfrr.github.io/lector-twkan/lector-twkan-simple.user.js
@@ -177,7 +177,13 @@
                 continue;
             }
             // Tambien vale si ya es el bloque limpio, aunque el texto sea corto.
-            if (element.querySelector('.lector-limpio') || (element.textContent || '').length > 200) {
+            const text = (element.textContent || '').trim();
+            if (element.querySelector('.lector-limpio') || text.length > 200) {
+                return element;
+            }
+            // Capitulos muy cortos (avisos del autor) antes se quedaban sin
+            // formato. Se descarta el texto de "cargando" de la propia web.
+            if (text.length > 20 && !/^(正在)?(加載|加载|載入|载入)/.test(text)) {
                 return element;
             }
         }
@@ -204,7 +210,20 @@
         if (/(章節更新|章节更新)/.test(text) && /(網站|网站)/.test(text)) {
             return true;
         }
+        // Marcas que la web mete entre parrafos para ensuciar el texto.
+        if (/GOOGLE\s*搜索|搜索\s*TWKAN|TWKAN/i.test(text)) {
+            return true;
+        }
         return false;
+    }
+
+    // La marca no siempre ocupa su propio parrafo: a veces va pegada al
+    // principio del texto real ("GOOGLE搜索TWKAN劉彧起身..."). Por eso ademas de
+    // descartar el parrafo entero hay que borrar la marca dentro del texto.
+    const WATERMARK_INLINE = /(?:GOOGLE\s*搜索\s*TWKAN|GOOGLE\s*搜索|谷歌搜索\s*TWKAN|搜索\s*TWKAN|WWW\.TWKAN\.COM|TWKAN\.COM|twkan\.com)/gi;
+
+    function stripWatermarks(text) {
+        return text.replace(WATERMARK_INLINE, '');
     }
 
     function htmlToText(html) {
@@ -225,7 +244,7 @@
             .replace(/<br\s*\/?>/gi, '\n');
         const textBox = document.createElement('div');
         textBox.innerHTML = normalized;
-        return textBox.textContent || '';
+        return stripWatermarks(textBox.textContent || '');
     }
 
     // Un parrafo que no termina en puntuacion final esta cortado a la mitad:
@@ -233,15 +252,22 @@
     const TERMINAL_PUNCTUATION = /[。！？…!?.;:][」』”"’）)】》\]]*$/;
     const HEADING_LINE = /^第[0-9０-９一二三四五六七八九十百千零〇]+章/;
     const DIGIT_CHAR = /[0-9０-９]/;
+    // El chino no separa palabras con espacios. La web parte palabras normales
+    // ("穩" + "定") para estropear el copiado; unirlas con espacio las rompe.
+    const CJK_CHAR = /[\u2e80-\u9fff\uf900-\ufaff\u3005\u3007]/;
 
     /**
-     * Une dos trozos con un espacio, salvo cuando se parte una cifra: ahi el
-     * espacio cambiaria el numero ("100" + "000" seria 100 000 y no 100000).
+     * Une dos trozos tal como quedarian en la pagina original: sin espacio
+     * cuando hay caracteres chinos de por medio y sin espacio al recomponer
+     * una cifra ("100" + "000" seria 100 000 y no 100000).
      */
     function joinText(left, right) {
         const before = left.slice(-1);
         const after = right.slice(0, 1);
         if (DIGIT_CHAR.test(before) && DIGIT_CHAR.test(after)) {
+            return left + right;
+        }
+        if (CJK_CHAR.test(before) || CJK_CHAR.test(after)) {
             return left + right;
         }
         return left + ' ' + right;
@@ -274,7 +300,9 @@
 
         // El capitulo repite al principio el titulo que ya muestra el <h1>.
         // Se quita antes de unir frases, o acabaria pegado al primer parrafo.
-        if (heading && parts[0] && parts[0].length > 3 && heading.startsWith(parts[0])) {
+        if (heading && parts[0] && parts[0].length > 3
+                && (heading.startsWith(parts[0])
+                    || (HEADING_LINE.test(parts[0]) && heading.includes(parts[0])))) {
             parts.shift();
         }
 
@@ -363,7 +391,7 @@
         const paragraphs = clean
             ? readRendered(clean)
             : splitParagraphs(htmlToText(root.innerHTML), heading);
-        return paragraphs.filter((p) => !isWatermark(p));
+        return paragraphs.map(stripWatermarks).filter((p) => p && !isWatermark(p));
     }
 
     /**
