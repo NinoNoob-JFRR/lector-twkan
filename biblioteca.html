@@ -318,9 +318,61 @@
 <div id="modal" hidden><div id="modal-caja"></div></div>
 <p id="aviso" hidden></p>
 
-<script>
-(function () {
-  'use strict';
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js';
+  import { getFirestore, doc, setDoc, getDocs, collection } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js';
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDP0GORVPDq0JiRvKTIsuZfC0zZK7OjWE4",
+    authDomain: "mi-biblioteca-novelas.firebaseapp.com",
+    projectId: "mi-biblioteca-novelas",
+    storageBucket: "mi-biblioteca-novelas.firebasestorage.app",
+    messagingSenderId: "992048920246",
+    appId: "1:992048920246:web:0b593d969769c158c4d817"
+  };
+  const fbApp = initializeApp(firebaseConfig);
+  const fbDb = getFirestore(fbApp);
+
+  async function fbGuardarNovela(novela) {
+    try { await setDoc(doc(fbDb, 'novelas', novela.id), novela); } catch (e) { console.warn('Firebase guardar novela:', e); }
+  }
+  async function fbGuardarCapitulo(capitulo) {
+    try { await setDoc(doc(fbDb, 'capitulos', capitulo.id), capitulo); } catch (e) { console.warn('Firebase guardar capítulo:', e); }
+  }
+  async function fbCargarNovelas() {
+    try {
+      const snap = await getDocs(collection(fbDb, 'novelas'));
+      return snap.docs.map(d => d.data());
+    } catch (e) { console.warn('Firebase cargar novelas:', e); return []; }
+  }
+  async function fbCargarCapitulos() {
+    try {
+      const snap = await getDocs(collection(fbDb, 'capitulos'));
+      return snap.docs.map(d => d.data());
+    } catch (e) { console.warn('Firebase cargar capítulos:', e); return []; }
+  }
+
+  async function sincronizarDesdeFirebase() {
+    try {
+      const novelasFb = await fbCargarNovelas();
+      const capitulosFb = await fbCargarCapitulos();
+      for (const n of novelasFb) {
+        const existente = await dbVer('novelas', n.id);
+        if (!existente || (n.actualizado || 0) > (existente.actualizado || 0)) {
+          await dbPoner('novelas', n);
+        }
+      }
+      for (const c of capitulosFb) {
+        const existente = await dbVer('capitulos', c.id);
+        if (!existente || (c.actualizado || 0) > (existente.actualizado || 0)) {
+          await dbPoner('capitulos', c);
+        }
+      }
+    } catch (e) { console.warn('Sync Firebase:', e); }
+  }
+
+  (function () {
+    'use strict';
 
   // ------------------------------------------------------------------ ajustes
   const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
@@ -413,7 +465,14 @@
 
   const dbTodo = (almacen) => tx(almacen, 'readonly', (o) => o.getAll());
   const dbVer = (almacen, clave) => tx(almacen, 'readonly', (o) => o.get(clave));
-  const dbPoner = (almacen, valor) => tx(almacen, 'readwrite', (o) => o.put(valor));
+  const dbPoner = async (almacen, valor) => {
+    const resultado = tx(almacen, 'readwrite', (o) => o.put(valor));
+    try {
+      if (almacen === 'novelas') { await fbGuardarNovela(valor); }
+      if (almacen === 'capitulos') { await fbGuardarCapitulo(valor); }
+    } catch (e) { console.warn('Firebase sync:', e); }
+    return resultado;
+  };
   const dbBorrar = (almacen, clave) => tx(almacen, 'readwrite', (o) => o.delete(clave));
 
   function capitulosDe(novelaId) {
@@ -531,6 +590,7 @@
 
   // ---------------------------------------------------------------- dibujar
   async function render() {
+    await sincronizarDesdeFirebase();
     const ruta = rutaActual();
     cerrarModal();
     navLector.hidden = true;
