@@ -370,70 +370,38 @@
     if (caja) { caja.classList.toggle('raya', ajustes.raya); }
   }
 
-  const DB_NOMBRE = 'bibliotecaNovelas';
-  const DB_VERSION = 1;
-  let dbPromesa = null;
-
-  function abrirDB() {
-    if (dbPromesa) { return dbPromesa; }
-    dbPromesa = new Promise((resolver, rechazar) => {
-      if (!window.indexedDB) { rechazar(new Error('Este navegador no permite guardar datos.')); return; }
-      const peticion = indexedDB.open(DB_NOMBRE, DB_VERSION);
-      peticion.onupgradeneeded = () => {
-        const db = peticion.result;
-        if (!db.objectStoreNames.contains('novelas')) {
-          db.createObjectStore('novelas', { keyPath: 'id' });
-        }
-        if (!db.objectStoreNames.contains('capitulos')) {
-          const almacen = db.createObjectStore('capitulos', { keyPath: 'id' });
-          almacen.createIndex('novelaId', 'novelaId');
-        }
-        if (!db.objectStoreNames.contains('meta')) {
-          db.createObjectStore('meta', { keyPath: 'k' });
-        }
-      };
-      peticion.onsuccess = () => resolver(peticion.result);
-      peticion.onerror = () => rechazar(peticion.error);
-    });
-    return dbPromesa;
-  }
-
-  function tx(almacen, modo, accion) {
-    return abrirDB().then((db) => new Promise((resolver, rechazar) => {
-      const transaccion = db.transaction(almacen, modo);
-      const objeto = transaccion.objectStore(almacen);
-      let peticion;
-      try { peticion = accion(objeto); } catch (error) { rechazar(error); return; }
-      transaccion.oncomplete = () => {
-        if (peticion && typeof peticion === 'object' && 'result' in peticion) {
-          resolver(peticion.result);
-        } else {
-          resolver(peticion);
-        }
-      };
-      transaccion.onerror = () => rechazar(transaccion.error);
-      transaccion.onabort = () => rechazar(transaccion.error);
-    }));
-  }
-
-  const dbTodo = (almacen) => tx(almacen, 'readonly', (o) => o.getAll());
-  const dbVer = (almacen, clave) => tx(almacen, 'readonly', (o) => o.get(clave));
-  const dbPoner = async (almacen, valor) => {
-    const resultado = tx(almacen, 'readwrite', (o) => o.put(valor));
-    // Firebase no bloquea la escritura local: se dispara y se olvida
-    if (almacen === 'novelas') { fbGuardarNovela(valor).catch(e => console.warn('Firebase novela:', e)); }
-    if (almacen === 'capitulos') { fbGuardarCapitulo(valor).catch(e => console.warn('Firebase capítulo:', e)); }
-    return resultado;
+  const dbTodo = async (almacen) => {
+    if (!firebaseListo || !fbDb) { return []; }
+    try {
+      const snap = await fbDb.collection(almacen).get();
+      return snap.docs.map(d => d.data());
+    } catch (e) { console.warn('Firebase dbTodo:', e); return []; }
   };
-  const dbBorrar = (almacen, clave) => tx(almacen, 'readwrite', (o) => o.delete(clave));
+  const dbVer = async (almacen, clave) => {
+    if (!firebaseListo || !fbDb) { return null; }
+    try {
+      const doc = await fbDb.collection(almacen).doc(clave).get();
+      return doc.exists ? doc.data() : null;
+    } catch (e) { console.warn('Firebase dbVer:', e); return null; }
+  };
+  const dbPoner = async (almacen, valor) => {
+    if (!firebaseListo || !fbDb) { return; }
+    try {
+      const docId = almacen === 'meta' ? valor.k : valor.id;
+      await fbDb.collection(almacen).doc(docId).set(valor);
+    } catch (e) { console.warn('Firebase dbPoner:', e); }
+    return valor;
+  };
+  const dbBorrar = async (almacen, clave) => {
+    if (!firebaseListo || !fbDb) { return; }
+    try { await fbDb.collection(almacen).doc(clave).delete(); } catch (e) { console.warn('Firebase dbBorrar:', e); }
+  };
 
   function capitulosDe(novelaId) {
-    return abrirDB().then((db) => new Promise((resolver, rechazar) => {
-      const indice = db.transaction('capitulos', 'readonly').objectStore('capitulos').index('novelaId');
-      const peticion = indice.getAll(novelaId);
-      peticion.onsuccess = () => resolver(peticion.result);
-      peticion.onerror = () => rechazar(peticion.error);
-    }));
+    if (!firebaseListo || !fbDb) { return Promise.resolve([]); }
+    return fbDb.collection('capitulos').where('novelaId', '==', novelaId).get()
+      .then(snap => snap.docs.map(d => d.data()))
+      .catch(e => { console.warn('Firebase capitulosDe:', e); return []; });
   }
 
   const nuevoId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -528,7 +496,6 @@
 
   async function render() {
     actualizarEstadoFirebase();
-    await sincronizarDesdeFirebase();
     const ruta = rutaActual();
     cerrarModal();
     btnEditarCap.hidden = true;
