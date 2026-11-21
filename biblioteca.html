@@ -425,10 +425,10 @@
     return Number.MAX_SAFE_INTEGER;
   }
 
+  // Por defecto los capítulos se ordenan por fecha de subida: el que subiste
+  // primero queda primero, y el más nuevo va al final. Si querés verlos del
+  // último al primero, usá el botón «Orden: último → 1».
   function compararCapitulos(a, b) {
-    const na = numeroDe(a);
-    const nb = numeroDe(b);
-    if (na !== nb) { return na - nb; }
     const ca = a.creado || 0;
     const cb = b.creado || 0;
     if (ca !== cb) { return ca - cb; }
