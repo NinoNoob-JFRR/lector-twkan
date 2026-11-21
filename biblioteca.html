@@ -155,6 +155,7 @@
     background: transparent;
     box-shadow: none;
     text-align: left;
+    cursor: pointer;
   }
   .fila:last-child { border-bottom: 0; }
   .fila:hover { background: color-mix(in srgb, var(--acento) 7%, transparent); }
@@ -162,6 +163,25 @@
   .fila .titulo { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .fila .marca { font-size: 12px; color: var(--tenue); }
   .fila.leido .titulo { color: var(--tenue); }
+  .borrar-cap {
+    flex: 0 0 auto;
+    min-width: 36px;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--linea);
+    background: var(--papel);
+    color: #b42318;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 17px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .borrar-cap:hover { background: color-mix(in srgb, #b42318 12%, var(--papel)); border-color: #b42318; }
+  .borrar-cap:active { background: color-mix(in srgb, #b42318 20%, var(--papel)); }
 
   .vacio {
     text-align: center;
@@ -631,11 +651,12 @@
       for (const c of vistaLista) {
         const porcentaje = Math.round((c.pos || 0) * 100);
         const numeroLista = numeroDe(c);
-        html += '<button class="fila' + (c.leido ? ' leido' : '') + '" data-cap="' + c.id + '">'
+        html += '<div class="fila' + (c.leido ? ' leido' : '') + '" data-cap="' + c.id + '">'
           + '<span class="num">' + (numeroLista !== Number.MAX_SAFE_INTEGER ? numeroLista : (c.num || '·')) + '</span>'
-          + '<span class="titulo">' + escapar(c.titulo || 'Sin título') + '</span>'
+          + '<span class="titulo" data-cap="' + c.id + '">' + escapar(c.titulo || 'Sin título') + '</span>'
           + '<span class="marca">' + (c.leido ? 'leído' : (porcentaje > 2 ? porcentaje + '%' : '')) + '</span>'
-          + '</button>';
+          + '<button class="borrar-cap" data-cap="' + c.id + '" title="Borrar capítulo">🗑</button>'
+          + '</div>';
       }
       html += '</div>';
       html += '<div class="botones">'
@@ -649,8 +670,14 @@
 
     vista.querySelector('.contenedor').innerHTML = html;
 
-    vista.querySelectorAll('[data-cap]').forEach((boton) => {
+    vista.querySelectorAll('.fila .titulo').forEach((boton) => {
       boton.addEventListener('click', () => ir('#/n/' + novelaId + '/c/' + boton.dataset.cap));
+    });
+    vista.querySelectorAll('.borrar-cap').forEach((boton) => {
+      boton.addEventListener('click', (evento) => {
+        evento.stopPropagation();
+        borrarCapitulo(novelaId, boton.dataset.cap);
+      });
     });
     document.getElementById('b-anadir').addEventListener('click', () => dialogoCapitulo(novelaId, null));
     document.getElementById('b-cap-txt').addEventListener('click', () => dialogoImportarCapitulos(novelaId));
@@ -936,6 +963,22 @@
       aviso('Ya están en orden');
     }
     render();
+  }
+
+  async function borrarCapitulo(novelaId, capituloId) {
+    const capitulo = await dbVer('capitulos', capituloId);
+    if (!capitulo) { return; }
+    if (!confirm('¿Borrar el capítulo "' + escapar(capitulo.titulo || 'Sin título') + '"? No se puede deshacer.')) { return; }
+    await dbBorrar('capitulos', capituloId);
+    await tocarNovela(novelaId);
+    await olvidarUltimo(null, capituloId);
+    cerrarModal();
+    if (estado.capitulo && estado.capitulo.id === capituloId) {
+      ir('#/n/' + novelaId);
+    } else {
+      render();
+    }
+    aviso('Capítulo borrado');
   }
 
   function dialogoCapitulo(novelaId, capitulo) {
