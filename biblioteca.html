@@ -467,10 +467,9 @@
   const dbVer = (almacen, clave) => tx(almacen, 'readonly', (o) => o.get(clave));
   const dbPoner = async (almacen, valor) => {
     const resultado = tx(almacen, 'readwrite', (o) => o.put(valor));
-    try {
-      if (almacen === 'novelas') { await fbGuardarNovela(valor); }
-      if (almacen === 'capitulos') { await fbGuardarCapitulo(valor); }
-    } catch (e) { console.warn('Firebase sync:', e); }
+    // Firebase no bloquea la escritura local: se dispara y se olvida
+    if (almacen === 'novelas') { fbGuardarNovela(valor).catch(e => console.warn('Firebase novela:', e)); }
+    if (almacen === 'capitulos') { fbGuardarCapitulo(valor).catch(e => console.warn('Firebase capítulo:', e)); }
     return resultado;
   };
   const dbBorrar = (almacen, clave) => tx(almacen, 'readwrite', (o) => o.delete(clave));
