@@ -20,6 +20,14 @@
     --acento: #1f6feb;
     --sombra: 0 1px 3px rgba(20, 18, 14, .08);
   }
+  html[data-theme="blanco"] {
+    --fondo: #ffffff;
+    --papel: #ffffff;
+    --tinta: #111111;
+    --tenue: #5f6368;
+    --linea: #e3e3e3;
+    --acento: #1f6feb;
+  }
   html[data-theme="sepia"] {
     --fondo: #efe4cf;
     --papel: #f5ead6;
@@ -108,6 +116,8 @@
 
   main { padding: 18px max(14px, env(safe-area-inset-left)) 110px max(14px, env(safe-area-inset-right)); }
   .contenedor { max-width: 780px; margin: 0 auto; }
+  /* El lector puede ser más ancho que las listas: el ancho lo manda el ajuste. */
+  .contenedor.lector { max-width: none; }
 
   h1.pequeno { font-size: 22px; margin: 6px 0 2px; }
   .sub { color: var(--tenue); font-size: 14px; margin: 0 0 18px; }
@@ -449,6 +459,7 @@
     navLector.hidden = true;
     btnEditarCap.hidden = true;
     barraProgreso.hidden = true;
+    vista.querySelector('.contenedor').className = 'contenedor';
     try {
       if (ruta.vista === 'lector') {
         await pintarLector(ruta.novelaId, ruta.capituloId);
@@ -609,14 +620,15 @@
       parrafos.shift();
     }
 
-    let html = '<div class="contenedor">';
-    html += '<article id="lector"><h2>' + escapar(capitulo.titulo || '') + '</h2>';
+    let html = '<article id="lector"><h2>' + escapar(capitulo.titulo || '') + '</h2>';
     for (const parrafo of parrafos) {
       html += '<p>' + parrafo.split('\n').map(escapar).join('<br>') + '</p>';
     }
-    html += '</article></div>';
+    html += '</article>';
 
-    vista.querySelector('.contenedor').innerHTML = html;
+    const cajaLector = vista.querySelector('.contenedor');
+    cajaLector.className = 'contenedor lector';
+    cajaLector.innerHTML = html;
     aplicarAjustes();
 
     // Restaurar la posición de lectura de este capítulo.
@@ -1121,12 +1133,13 @@
       </div>
       <div class="ajuste">
         <label>Ancho del texto <span id="v-ancho">${ajustes.ancho} rem</span></label>
-        <input id="a-ancho" type="range" min="30" max="60" step="1" value="${ajustes.ancho}">
+        <input id="a-ancho" type="range" min="20" max="100" step="1" value="${ajustes.ancho}">
       </div>
       <div class="ajuste">
         <label>Tema</label>
         <div class="opciones" id="a-tema">
           <button data-tema="claro" class="${ajustes.tema === 'claro' ? 'activo' : ''}">Claro</button>
+          <button data-tema="blanco" class="${ajustes.tema === 'blanco' ? 'activo' : ''}">Blanco</button>
           <button data-tema="sepia" class="${ajustes.tema === 'sepia' ? 'activo' : ''}">Sepia</button>
           <button data-tema="oscuro" class="${ajustes.tema === 'oscuro' ? 'activo' : ''}">Oscuro</button>
         </div>
