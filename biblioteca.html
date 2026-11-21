@@ -437,6 +437,13 @@
   }
 
   function compararCapitulos(a, b) {
+    const na = a.num || 0;
+    const nb = b.num || 0;
+    const esNotaA = na >= 999999;
+    const esNotaB = nb >= 999999;
+    if (esNotaA && !esNotaB) { return 1; }
+    if (!esNotaA && esNotaB) { return -1; }
+    if (esNotaA && esNotaB) { return (na - nb); }
     const ca = a.creado || 0;
     const cb = b.creado || 0;
     if (ca !== cb) { return ca - cb; }
