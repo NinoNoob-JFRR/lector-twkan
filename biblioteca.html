@@ -641,6 +641,8 @@
       html += '<div class="botones">'
         + '<button class="orden" id="b-orden-numeros" title="Guarda el número que aparece en cada título para que la lista quede en orden">'
         + 'Ordenar por el número del título</button>'
+        + '<button class="orden" id="b-reordenar" title="Les asigna números correlativos 1, 2, 3… según el orden en que aparecen">'
+        + 'Reordenar capítulos</button>'
         + '</div>';
     }
     html += '</div>';
@@ -665,6 +667,7 @@
       ir('#/n/' + novelaId + '/c/' + destino.id);
     });
     document.getElementById('b-orden-numeros').addEventListener('click', () => renumerar(novelaId));
+    document.getElementById('b-reordenar').addEventListener('click', () => reordenarCapitulos(novelaId));
   }
 
   async function pintarLector(novelaId, capituloId) {
@@ -886,8 +889,31 @@
     return n;
   }
 
-  // La lista se ordena por el numero del titulo, asi que ese numero se guarda:
-  // evita que «Capítulo 9» aparezca despues de «Capítulo 10».
+  // Les asigna números correlativos 1, 2, 3… según el orden en que aparecen
+  // en la lista (ya ordenada por número de título o por fecha).
+  async function reordenarCapitulos(novelaId) {
+    const capitulos = (await capitulosDe(novelaId)).sort(compararCapitulos);
+    if (!capitulos.length) { aviso('No hay capítulos que reordenar'); return; }
+    let cambios = 0;
+    for (let i = 0; i < capitulos.length; i += 1) {
+      const c = capitulos[i];
+      const nuevo = i + 1;
+      if (c.num !== nuevo) {
+        await dbPoner('capitulos', Object.assign({}, c, { num: nuevo, actualizado: Date.now() }));
+        cambios += 1;
+      }
+    }
+    cerrarModal();
+    if (cambios) {
+      aviso(cambios + (cambios === 1 ? ' capítulo reordenado' : ' capítulos reordenados'));
+    } else {
+      aviso('Ya están en orden');
+    }
+    render();
+  }
+
+  // La lista se ordena por el número del título, así que ese número se guarda:
+  // evita que «Capítulo 9» aparezca después de «Capítulo 10».
   async function renumerar(novelaId) {
     const capitulos = (await capitulosDe(novelaId)).sort(compararCapitulos);
     if (!capitulos.length) { aviso('No hay capítulos que ordenar'); return; }
