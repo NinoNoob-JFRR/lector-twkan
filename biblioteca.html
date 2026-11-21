@@ -633,7 +633,7 @@
     let temporizador = null;
     const guardarPosicion = () => {
       const alto = document.documentElement.scrollHeight - window.innerHeight;
-      const proporcion = alto > 0 ? Math.min(window.scrollY / alto, 1) : 0;
+      const proporcion = alto > 0 ? Math.min(window.scrollY / alto, 1) : 1;
       actualizarBarraProgreso();
       clearTimeout(temporizador);
       temporizador = setTimeout(async () => {
@@ -769,6 +769,7 @@
       const capitulos = await capitulosDe(novela.id);
       for (const c of capitulos) { await dbBorrar('capitulos', c.id); }
       await dbBorrar('novelas', novela.id);
+      await olvidarUltimo(novela.id, null);
       cerrarModal();
       ir('#/');
       aviso('Novela borrada');
@@ -850,6 +851,7 @@
         if (!confirm('¿Borrar este capítulo?')) { return; }
         await dbBorrar('capitulos', capitulo.id);
         await tocarNovela(novelaId);
+        await olvidarUltimo(null, capitulo.id);
         cerrarModal();
         ir('#/n/' + novelaId);
         aviso('Capítulo borrado');
@@ -863,6 +865,16 @@
     if (novela) {
       novela.actualizado = Date.now();
       await dbPoner('novelas', novela);
+    }
+  }
+
+  // Si se borra lo que apuntaba "Continuar", la marca deja de tener sentido.
+  async function olvidarUltimo(novelaId, capituloId) {
+    const ultimo = await dbVer('meta', 'ultimo');
+    if (!ultimo) { return; }
+    if ((novelaId && ultimo.novelaId === novelaId)
+        || (capituloId && ultimo.capituloId === capituloId)) {
+      await dbBorrar('meta', 'ultimo');
     }
   }
 
@@ -1059,6 +1071,7 @@
         exportado: Date.now(),
         novelas: await dbTodo('novelas'),
         capitulos: await dbTodo('capitulos'),
+        meta: await dbTodo('meta'),
         ajustes: ajustes
       };
       descargar('biblioteca-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify(copia, null, 2));
@@ -1080,6 +1093,10 @@
         for (const c of capitulos) {
           if (!c || !c.id || !c.novelaId) { continue; }
           if (!(await dbVer('capitulos', c.id))) { await dbPoner('capitulos', c); nuevosCaps += 1; }
+        }
+        for (const m of (Array.isArray(copia.meta) ? copia.meta : [])) {
+          if (!m || !m.k) { continue; }
+          if (!(await dbVer('meta', m.k))) { await dbPoner('meta', m); }
         }
         cerrarModal();
         aviso('Restauradas ' + nuevas + ' novelas y ' + nuevosCaps + ' capítulos');
