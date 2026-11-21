@@ -647,6 +647,7 @@
     html += '<button id="b-cap-txt">Importar capítulos .txt</button>';
     html += '<button id="b-exportar">Exportar novela .txt</button>';
     html += '<button id="b-editar">Editar</button>';
+    html += '<button id="b-eliminar-duplicados">Eliminar capítulos duplicados</button>';
     html += '<button id="b-orden">Orden: ' + (estado.orden === 'asc' ? '1 → último' : 'último → 1') + '</button>';
     html += '</div>';
 
@@ -703,6 +704,10 @@
       document.getElementById('b-cap-txt').addEventListener('click', () => dialogoImportarCapitulos(novelaId));
       document.getElementById('b-exportar').addEventListener('click', () => exportarNovela(novelaId));
       document.getElementById('b-editar').addEventListener('click', () => dialogoEditarNovela(novela));
+      document.getElementById('b-eliminar-duplicados').addEventListener('click', async () => {
+        if (!confirm('¿Eliminar capítulos duplicados? Se conservará solo el primero de cada texto repetido.')) return;
+        await eliminarDuplicados(novelaId);
+      });
       document.getElementById('b-orden').addEventListener('click', async () => {
         const actual = await dbVer('novelas', novelaId);
         const nueva = actual && actual.orden === 'desc' ? 'asc' : 'desc';
@@ -1006,6 +1011,38 @@
       render();
     }
     aviso('Capítulo borrado');
+  }
+
+  async function eliminarDuplicados(novelaId) {
+    const capitulos = await capitulosDe(novelaId);
+    if (!capitulos.length) { aviso('No hay capítulos'); return; }
+
+    const grupos = {};
+    for (const c of capitulos) {
+      const clave = normalizarTexto(c.texto);
+      if (!grupos[clave]) grupos[clave] = [];
+      grupos[clave].push(c);
+    }
+
+    let eliminados = 0;
+    for (const clave of Object.keys(grupos)) {
+      const lista = grupos[clave];
+      if (lista.length <= 1) continue;
+      // Mantener el primero, borrar el resto
+      for (let i = 1; i < lista.length; i++) {
+        await dbBorrar('capitulos', lista[i].id);
+        await fbBorrarCapitulo(lista[i].id);
+        eliminados += 1;
+      }
+    }
+
+    cerrarModal();
+    if (eliminados) {
+      aviso(eliminados + ' capítulo' + (eliminados === 1 ? '' : 's') + ' duplicado' + (eliminados === 1 ? '' : 's') + ' eliminado' + (eliminados === 1 ? '' : 's'));
+    } else {
+      aviso('No hay capítulos duplicados');
+    }
+    render();
   }
 
   function dialogoCapitulo(novelaId, capitulo) {
