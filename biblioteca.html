@@ -1489,44 +1489,47 @@
   }
 
   // -------------------------------------------------------------- navegación
-  btnAtras.addEventListener('click', () => {
-    const ruta = rutaActual();
-    if (ruta.vista === 'lector') { ir('#/n/' + ruta.novelaId); return; }
-    if (ruta.vista === 'novela') { ir('#/'); return; }
-    history.back();
-  });
+  try {
+    btnAtras.addEventListener('click', () => {
+      const ruta = rutaActual();
+      if (ruta.vista === 'lector') { ir('#/n/' + ruta.novelaId); return; }
+      if (ruta.vista === 'novela') { ir('#/'); return; }
+      history.back();
+    });
 
-  btnAjustes.addEventListener('click', dialogoAjustes);
+    btnAjustes.addEventListener('click', dialogoAjustes);
 
-  btnEditarCap.addEventListener('click', () => {
-    if (estado.novela && estado.capitulo) {
-      dialogoCapitulo(estado.novela.id, estado.capitulo);
-    }
-  });
+    btnEditarCap.addEventListener('click', () => {
+      if (estado.novela && estado.capitulo) {
+        dialogoCapitulo(estado.novela.id, estado.capitulo);
+      }
+    });
 
-  document.getElementById('ant').addEventListener('click', () => {
-    const ruta = rutaActual();
-    if (ruta.vista !== 'lector') { return; }
-    const indice = estado.capitulos.findIndex((c) => c.id === ruta.capituloId);
-    if (indice > 0) { ir('#/n/' + ruta.novelaId + '/c/' + estado.capitulos[indice - 1].id); }
-  });
-  document.getElementById('sig').addEventListener('click', () => {
-    const ruta = rutaActual();
-    if (ruta.vista !== 'lector') { return; }
-    const indice = estado.capitulos.findIndex((c) => c.id === ruta.capituloId);
-    if (indice >= 0 && indice < estado.capitulos.length - 1) {
-      ir('#/n/' + ruta.novelaId + '/c/' + estado.capitulos[indice + 1].id);
-    }
-  });
-  document.getElementById('indice').addEventListener('click', () => {
-    const ruta = rutaActual();
-    if (ruta.vista === 'lector') { ir('#/n/' + ruta.novelaId); }
-  });
+    document.getElementById('ant').addEventListener('click', () => {
+      const ruta = rutaActual();
+      if (ruta.vista !== 'lector') { return; }
+      const indice = estado.capitulos.findIndex((c) => c.id === ruta.capituloId);
+      if (indice > 0) { ir('#/n/' + ruta.novelaId + '/c/' + estado.capitulos[indice - 1].id); }
+    });
+    document.getElementById('sig').addEventListener('click', () => {
+      const ruta = rutaActual();
+      if (ruta.vista !== 'lector') { return; }
+      const indice = estado.capitulos.findIndex((c) => c.id === ruta.capituloId);
+      if (indice >= 0 && indice < estado.capitulos.length - 1) {
+        ir('#/n/' + ruta.novelaId + '/c/' + estado.capitulos[indice + 1].id);
+      }
+    });
+    document.getElementById('indice').addEventListener('click', () => {
+      const ruta = rutaActual();
+      if (ruta.vista === 'lector') { ir('#/n/' + ruta.novelaId); }
+    });
 
-  // Al entrar en el lector se quita el scroll de la pantalla anterior.
-  window.addEventListener('hashchange', () => {
-    if (rutaActual().vista !== 'lector') { window.onscroll = null; }
-  });
+    window.addEventListener('hashchange', () => {
+      if (rutaActual().vista !== 'lector') { window.onscroll = null; }
+    });
+  } catch (e) {
+    console.error('Error asignando eventos de navegación:', e);
+  }
 
   aplicarAjustes();
   render();
