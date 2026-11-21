@@ -950,8 +950,9 @@
     document.getElementById('e-borrar').addEventListener('click', async () => {
       if (!confirm('¿Borrar «' + novela.titulo + '» y todos sus capítulos? No se puede deshacer.')) { return; }
       const capitulos = await capitulosDe(novela.id);
-      for (const c of capitulos) { await dbBorrar('capitulos', c.id); }
+      for (const c of capitulos) { await dbBorrar('capitulos', c.id); await fbBorrarCapitulo(c.id); }
       await dbBorrar('novelas', novela.id);
+      await fbBorrarNovela(novela.id);
       await olvidarUltimo(novela.id, null);
       cerrarModal();
       ir('#/');
@@ -1028,6 +1029,7 @@
     if (!capitulo) { return; }
     if (!confirm('¿Borrar el capítulo "' + escapar(capitulo.titulo || 'Sin título') + '"? No se puede deshacer.')) { return; }
     await dbBorrar('capitulos', capituloId);
+    await fbBorrarCapitulo(capituloId);
     await tocarNovela(novelaId);
     await olvidarUltimo(null, capituloId);
     cerrarModal();
@@ -1624,6 +1626,14 @@
   async function fbGuardarCapitulo(capitulo) {
     if (!firebaseListo || !fbDb) return;
     try { await fbDb.collection('capitulos').doc(capitulo.id).set(capitulo); } catch (e) { console.warn('Firebase capítulo:', e); }
+  }
+  async function fbBorrarNovela(novelaId) {
+    if (!firebaseListo || !fbDb) return;
+    try { await fbDb.collection('novelas').doc(novelaId).delete(); } catch (e) { console.warn('Firebase borrar novela:', e); }
+  }
+  async function fbBorrarCapitulo(capituloId) {
+    if (!firebaseListo || !fbDb) return;
+    try { await fbDb.collection('capitulos').doc(capituloId).delete(); } catch (e) { console.warn('Firebase borrar capítulo:', e); }
   }
   async function fbCargarNovelas() {
     if (!firebaseListo || !fbDb) return [];
