@@ -1,4 +1,4 @@
-﻿ï»¿<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es" data-theme="claro">
 <head>
 <meta charset="utf-8">
@@ -117,7 +117,6 @@
 
   main { padding: 18px max(14px, env(safe-area-inset-left)) 110px max(14px, env(safe-area-inset-right)); }
   .contenedor { max-width: 780px; margin: 0 auto; }
-  /* El lector puede ser mÃƒÂ¡s ancho que las listas: el ancho lo manda el ajuste. */
   .contenedor.lector { max-width: none; }
 
   h1.pequeno { font-size: 22px; margin: 6px 0 2px; }
@@ -162,7 +161,6 @@
   .fila .num { color: var(--tenue); font-variant-numeric: tabular-nums; min-width: 3.2em; font-size: 13px; }
   .fila .titulo { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .fila .marca { font-size: 12px; color: var(--tenue); }
-  .fila.leido .titulo { color: var(--tenue); }
   .fila.leido { opacity: .6; background: color-mix(in srgb, #1a7f37 10%, transparent); }
   .fila.leido .marca { color: #1a7f37; font-weight: 600; }
   .borrar-cap {
@@ -268,13 +266,6 @@
   }
   .dividir select { width: auto; min-width: 150px; }
 
-  /* Estado de Firebase en la barra */
-  #estado-firebase { font-size: 17px; line-height: 1; padding: 8px 10px; }
-  #estado-firebase.conectado { color: #1a7f37; }
-  #estado-firebase.desconectado { color: #b42318; }
-  #estado-firebase.sincronizando { color: #1f6feb; animation: pulso 1.5s infinite; }
-  @keyframes pulso { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
-
   #aviso {
     position: fixed;
     left: 50%;
@@ -302,11 +293,34 @@
   .meta { color: var(--tenue); font-size: 13px; }
   .separador { border: 0; border-top: 1px solid var(--linea); margin: 18px 0; }
 </style>
+</head>
+<body>
+
+<header id="barra">
+  <button id="btn-atras" class="icono" title="Atrás" hidden>←</button>
+  <div id="barra-titulo">Mi biblioteca</div>
+  <button id="btn-ajustes" class="icono" title="Ajustes de lectura">Aa</button>
+  <button id="btn-editar-cap" class="icono" title="Editar capítulo" hidden>✎</button>
+</header>
+
+<div id="progreso" hidden><div id="progreso-relleno"></div></div>
+
+<main id="vista"><div class="contenedor"></div></main>
+
+<nav id="nav-lector" hidden>
+  <button id="ant">‹ Anterior</button>
+  <button id="indice">Índice</button>
+  <button id="sig">Siguiente ›</button>
+</nav>
+
+<div id="modal" hidden><div id="modal-caja"></div></div>
+<p id="aviso" hidden></p>
+
 <script>
 (function () {
-    'use strict';
+  'use strict';
 
-const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
+  const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
   const AJUSTES_BASE = {
     fuente: 19,
     interlineado: 1.75,
@@ -346,7 +360,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     if (caja) { caja.classList.toggle('raya', ajustes.raya); }
   }
 
-  // --------------------------------------------------------------- IndexedDB
   const DB_NOMBRE = 'bibliotecaNovelas';
   const DB_VERSION = 1;
   let dbPromesa = null;
@@ -382,7 +395,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
       let peticion;
       try { peticion = accion(objeto); } catch (error) { rechazar(error); return; }
       transaccion.oncomplete = () => {
-        // getAll() y get() devuelven una peticion: hay que resolver su resultado.
         if (peticion && typeof peticion === 'object' && 'result' in peticion) {
           resolver(peticion.result);
         } else {
@@ -398,9 +410,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
   const dbVer = (almacen, clave) => tx(almacen, 'readonly', (o) => o.get(clave));
   const dbPoner = async (almacen, valor) => {
     const resultado = tx(almacen, 'readwrite', (o) => o.put(valor));
-    // Firebase no bloquea la escritura local: se dispara y se olvida
-    if (almacen === 'novelas') { fbGuardarNovela(valor).catch(e => console.warn('Firebase novela:', e)); }
-    if (almacen === 'capitulos') { fbGuardarCapitulo(valor).catch(e => console.warn('Firebase capÃƒÂ­tulo:', e)); }
     return resultado;
   };
   const dbBorrar = (almacen, clave) => tx(almacen, 'readwrite', (o) => o.delete(clave));
@@ -416,16 +425,12 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
 
   const nuevoId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
-  // Extrae el nÃƒÂºmero de un nombre de archivo (ej. "417.txt" -> 417, "capitulo 440.txt" -> 440).
-  // Devuelve null si no hay nÃƒÂºmero (para notas del autor, etc.).
   function extraerNumeroDeNombre(nombre) {
     const base = String(nombre || '').replace(/\.txt$/i, '');
     const m = base.match(/(\d+)/);
     return m ? Number(m[1]) : null;
   }
 
-  // NÃƒÂºmero usado para marcar capÃƒÂ­tulos sin nÃƒÂºmero real (notas del autor, etc.).
-  // Siempre se ordenan al final, sin importar cuÃƒÂ¡ndo se importen.
   const NUM_SIN_NUMERO = 999999;
 
   function esCapituloSinNumero(c) {
@@ -433,18 +438,15 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     return n !== null && n >= NUM_SIN_NUMERO;
   }
 
-  // ------------------------------------------------------------------ estado
   const estado = { novela: null, capitulo: null, capitulos: [], novelas: [], orden: 'asc' };
 
   function capituloDeTitulo(titulo) {
     const t = String(titulo || '');
-    let m = t.match(/Ã§Â¬Â¬\s*([0-9Ã¯Â¼Â-Ã¯Â¼â„¢]+)\s*[Ã§Â«Â Ã¨Å â€šÃ¥â€ºÅ¾Ã¥ÂÂ·]/);
-    if (!m) { m = t.match(/cap[iÃƒÂ­]tulo\s+([0-9]+)/i); }
-    return m ? Number(m[1].replace(/[Ã¯Â¼Â-Ã¯Â¼â„¢]/g, (d) => String('Ã¯Â¼ÂÃ¯Â¼â€˜Ã¯Â¼â€™Ã¯Â¼â€œÃ¯Â¼â€Ã¯Â¼â€¢Ã¯Â¼â€“Ã¯Â¼â€”Ã¯Â¼ËœÃ¯Â¼â„¢'.indexOf(d)))) : null;
+    let m = t.match(/第\s*([0-9０-９]+)\s*[章节回卷]/);
+    if (!m) { m = t.match(/cap[ií]tulo\s+([0-9]+)/i); }
+    return m ? Number(m[1].replace(/[０-９]/g, (d) => String('０１２３４５６７８９'.indexOf(d)))) : null;
   }
 
-  // Para ordenar se mira primero el nÃƒÂºmero que trae el propio tÃƒÂ­tulo (que es el
-  // que el usuario ve), y solo despuÃƒÂ©s el nÃƒÂºmero guardado.
   function numeroDe(c) {
     const delTitulo = capituloDeTitulo(c.titulo);
     if (delTitulo !== null) { return delTitulo; }
@@ -453,9 +455,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     return Number.MAX_SAFE_INTEGER;
   }
 
-  // Por defecto los capÃƒÂ­tulos se ordenan por fecha de subida: el que subiste
-  // primero queda primero, y el mÃƒÂ¡s nuevo va al final. Si querÃƒÂ©s verlos del
-  // ÃƒÂºltimo al primero, usÃƒÂ¡ el botÃƒÂ³n Ã‚Â«Orden: ÃƒÂºltimo Ã¢â€ â€™ 1Ã‚Â».
   function compararCapitulos(a, b) {
     const ca = a.creado || 0;
     const cb = b.creado || 0;
@@ -468,7 +467,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
   const btnAtras = document.getElementById('btn-atras');
   const btnAjustes = document.getElementById('btn-ajustes');
   const btnEditarCap = document.getElementById('btn-editar-cap');
-  const estadoFirebase = document.getElementById('estado-firebase');
   const barraProgreso = document.getElementById('progreso');
   const rellenoProgreso = document.getElementById('progreso-relleno');
   const navLector = document.getElementById('nav-lector');
@@ -496,10 +494,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     } catch (e) { return ''; }
   }
 
-  // ------------------------------------------------------------------ rutas
-  // #/                      biblioteca
-  // #/n/<id>                novela
-  // #/n/<id>/c/<id>         lector
   function rutaActual() {
     const hash = location.hash.replace(/^#\/?/, '');
     const partes = hash.split('/').filter(Boolean);
@@ -519,15 +513,9 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
 
   window.addEventListener('hashchange', render);
 
-  // ---------------------------------------------------------------- dibujar
   async function render() {
-    // Actualizar indicador de estado de Firebase
-    actualizarEstadoFirebase();
-    // Sincronizar con Firebase en segundo plano, sin bloquear la carga
-    sincronizarDesdeFirebase().catch(() => {});
     const ruta = rutaActual();
     cerrarModal();
-    navLector.hidden = true;
     btnEditarCap.hidden = true;
     barraProgreso.hidden = true;
     vista.querySelector('.contenedor').className = 'contenedor';
@@ -563,8 +551,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     const ultimo = await dbVer('meta', 'ultimo');
     const ultimoCap = ultimo && ultimo.capituloId ? capitulos.find((c) => c.id === ultimo.capituloId) : null;
 
-    // Buscar el mejor candidato para "Continuar": ÃƒÂºltimo capÃƒÂ­tulo leÃƒÂ­do,
-    // si no hay ninguno leÃƒÂ­do, el capÃƒÂ­tulo mÃƒÂ¡s recientemente actualizado.
     let seguirCap = null;
     let seguirNovela = null;
     const leidos = capitulos.filter((c) => c.leido);
@@ -581,35 +567,31 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     let html = '<div class="contenedor">';
     html += '<h1 class="pequeno">Tu biblioteca</h1>';
     html += '<p class="sub">' + novelas.length + (novelas.length === 1 ? ' novela' : ' novelas')
-      + ' Ã‚Â· ' + capitulos.length + (capitulos.length === 1 ? ' capÃƒÂ­tulo' : ' capÃƒÂ­tulos') + '</p>';
+      + ' · ' + capitulos.length + (capitulos.length === 1 ? ' capítulo' : ' capítulos') + '</p>';
 
     html += '<div class="botones">';
     html += '<button class="principal" id="b-nueva">Nueva novela</button>';
     html += '<button id="b-importar">Importar .txt</button>';
     html += '<button id="b-copia">Copia de seguridad</button>';
-    if (firebaseListo) {
-      html += '<button id="b-subir-nube">Subir a la nube</button>';
-      html += '<button id="b-sincronizar">Sincronizar desde la nube</button>';
-    }
     html += '</div>';
 
     if (seguirCap && seguirNovela) {
       html += '<div class="botones"><button id="b-seguir">Continuar: '
-        + escapar(recortar(seguirCap.titulo || 'capÃƒÂ­tulo', 42)) + '</button></div>';
+        + escapar(recortar(seguirCap.titulo || 'capítulo', 42)) + '</button></div>';
     }
 
     if (!novelas.length) {
-      html += '<div class="vacio"><h2>Empieza aquÃƒÂ­</h2>'
-        + '<p>Crea una novela, pega dentro los capÃƒÂ­tulos que traduzcas con Gemini y se guardarÃƒÂ¡n en este navegador.</p>'
-        + '<p>TambiÃƒÂ©n puedes importar un <strong>.txt</strong> o restaurar una copia de seguridad.</p>'
-        + '<p class="meta">Los capÃƒÂ­tulos tambiÃƒÂ©n se pueden descargar como .txt para tenerlos en el PC.</p></div>';
+      html += '<div class="vacio"><h2>Empieza aquí</h2>'
+        + '<p>Crea una novela, pega dentro los capítulos que traduzcas con Gemini y se guardarán en este navegador.</p>'
+        + '<p>También puedes importar un <strong>.txt</strong> o restaurar una copia de seguridad.</p>'
+        + '<p class="meta">Los capítulos también se pueden descargar como .txt para tenerlos en el PC.</p></div>';
     } else {
       html += '<div class="tarjetas">';
       for (const n of novelas) {
         html += '<button class="tarjeta" data-novela="' + n.id + '">'
           + '<strong>' + escapar(n.titulo) + '</strong>'
           + '<span>' + escapar(n.autor || 'Sin autor') + '</span>'
-          + '<span>' + (porNovela.get(n.id) || 0) + ' capÃƒÂ­tulos Ã‚Â· ' + fecha(n.actualizado || n.creado) + '</span>'
+          + '<span>' + (porNovela.get(n.id) || 0) + ' capítulos · ' + fecha(n.actualizado || n.creado) + '</span>'
           + '</button>';
       }
       html += '</div>';
@@ -625,25 +607,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
       document.getElementById('b-nueva').addEventListener('click', dialogoNuevaNovela);
       document.getElementById('b-importar').addEventListener('click', dialogoImportarNovelas);
       document.getElementById('b-copia').addEventListener('click', dialogoCopia);
-      const btnSubirNube = document.getElementById('b-subir-nube');
-      if (btnSubirNube) {
-        btnSubirNube.addEventListener('click', async () => {
-          btnSubirNube.classList.add('sincronizando');
-          await subirTodoAFirebase();
-          btnSubirNube.classList.remove('sincronizando');
-          actualizarEstadoFirebase();
-          aviso('Subido a la nube');
-        });
-      }
-      const btnSincronizar = document.getElementById('b-sincronizar');
-      if (btnSincronizar) {
-        btnSincronizar.addEventListener('click', async () => {
-          btnSincronizar.classList.add('sincronizando');
-          await sincronizarDesdeFirebase();
-          btnSincronizar.classList.remove('sincronizando');
-          render();
-        });
-      }
       const seguir = document.getElementById('b-seguir');
       if (seguir) {
         seguir.addEventListener('click', () => {
@@ -671,31 +634,30 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
 
     let html = '<div class="contenedor">';
     html += '<h1 class="pequeno">' + escapar(novela.titulo) + '</h1>';
-    html += '<p class="sub">' + escapar(novela.autor || 'Sin autor') + ' Ã‚Â· ' + capitulos.length
-      + (capitulos.length === 1 ? ' capÃƒÂ­tulo' : ' capÃƒÂ­tulos') + '</p>';
+    html += '<p class="sub">' + escapar(novela.autor || 'Sin autor') + ' · ' + capitulos.length
+      + (capitulos.length === 1 ? ' capítulo' : ' capítulos') + '</p>';
 
     html += '<div class="botones">';
-    html += '<button class="principal" id="b-anadir">AÃƒÂ±adir capÃƒÂ­tulo</button>';
-    html += '<button id="b-cap-txt">Importar capÃƒÂ­tulos .txt</button>';
+    html += '<button class="principal" id="b-anadir">Añadir capítulo</button>';
+    html += '<button id="b-cap-txt">Importar capítulos .txt</button>';
     html += '<button id="b-exportar">Exportar novela .txt</button>';
     html += '<button id="b-editar">Editar</button>';
-    html += '<button id="b-orden">Orden: ' + (estado.orden === 'asc' ? '1 Ã¢â€ â€™ ÃƒÂºltimo' : 'ÃƒÂºltimo Ã¢â€ â€™ 1') + '</button>';
+    html += '<button id="b-orden">Orden: ' + (estado.orden === 'asc' ? '1 → último' : 'último → 1') + '</button>';
     html += '</div>';
 
     if (!capitulos.length) {
-      html += '<div class="vacio"><h2>Sin capÃƒÂ­tulos</h2>'
-        + '<p>Pulsa <strong>AÃƒÂ±adir capÃƒÂ­tulo</strong> y pega el texto que te haya dado Gemini.</p>'
-        + '<p class="meta">El tÃƒÂ­tulo se rellena solo si el texto empieza por Ã‚Â«Ã§Â¬Â¬12Ã§Â«Â  Ã¢â‚¬Â¦Ã‚Â» o Ã‚Â«CapÃƒÂ­tulo 12Ã‚Â».</p></div>';
+      html += '<div class="vacio"><h2>Sin capítulos</h2>'
+        + '<p>Pulsa <strong>Añadir capítulo</strong> y pega el texto que te haya dado Gemini.</p>'
+        + '<p class="meta">El título se rellena solo si el texto empieza por «第12章 …» o «Capítulo 12».</p></div>';
     } else {
       const orden = estado.orden;
-      // Continuar va al ÃƒÅ¡LTIMO capÃƒÂ­tulo leÃƒÂ­do (donde se quedÃƒÂ³). Si ninguno estÃƒÂ¡ leÃƒÂ­do, va al primero.
       const leidos = capitulos.filter((c) => c.leido);
       const ultimoLeido = leidos.length ? leidos[leidos.length - 1] : null;
       const destino = ultimoLeido || capitulos[0];
       const siguienteTitulo = destino.titulo || destino.num;
 
       html += '<div class="botones"><button class="principal" id="b-seguir-novela">'
-        + 'Continuar: ' + escapar(recortar(siguienteTitulo || 'capÃƒÂ­tulo', 46))
+        + 'Continuar: ' + escapar(recortar(siguienteTitulo || 'capítulo', 46))
         + '</button></div>';
 
       const vistaLista = orden === 'desc' ? capitulos.slice().reverse() : capitulos;
@@ -704,18 +666,18 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
         const porcentaje = Math.round((c.pos || 0) * 100);
         const numeroLista = numeroDe(c);
         html += '<div class="fila' + (c.leido ? ' leido' : '') + '" data-cap="' + c.id + '">'
-          + '<span class="num">' + (numeroLista !== Number.MAX_SAFE_INTEGER ? numeroLista : (c.num || 'Ã‚Â·')) + '</span>'
-          + '<span class="titulo" data-cap="' + c.id + '">' + escapar(c.titulo || 'Sin tÃƒÂ­tulo') + '</span>'
-          + '<span class="marca">' + (c.leido ? 'leÃƒÂ­do' : (porcentaje > 2 ? porcentaje + '%' : '')) + '</span>'
-          + '<button class="borrar-cap" data-cap="' + c.id + '" title="Borrar capÃƒÂ­tulo">Ã°Å¸â€”â€˜</button>'
+          + '<span class="num">' + (numeroLista !== Number.MAX_SAFE_INTEGER ? numeroLista : (c.num || '·')) + '</span>'
+          + '<span class="titulo" data-cap="' + c.id + '">' + escapar(c.titulo || 'Sin título') + '</span>'
+          + '<span class="marca">' + (c.leido ? 'leído' : (porcentaje > 2 ? porcentaje + '%' : '')) + '</span>'
+          + '<button class="borrar-cap" data-cap="' + c.id + '" title="Borrar capítulo">🗑</button>'
           + '</div>';
       }
       html += '</div>';
       html += '<div class="botones">'
-        + '<button class="orden" id="b-orden-numeros" title="Guarda el nÃƒÂºmero que aparece en cada tÃƒÂ­tulo para que la lista quede en orden">'
-        + 'Ordenar por el nÃƒÂºmero del tÃƒÂ­tulo</button>'
-        + '<button class="orden" id="b-reordenar" title="Les asigna nÃƒÂºmeros correlativos 1, 2, 3Ã¢â‚¬Â¦ segÃƒÂºn el orden en que aparecen">'
-        + 'Reordenar capÃƒÂ­tulos</button>'
+        + '<button class="orden" id="b-orden-numeros" title="Guarda el número que aparece en cada título para que la lista quede en orden">'
+        + 'Ordenar por el número del título</button>'
+        + '<button class="orden" id="b-reordenar" title="Les asigna números correlativos 1, 2, 3… según el orden en que aparecen">'
+        + 'Reordenar capítulos</button>'
         + '</div>';
     }
     html += '</div>';
@@ -731,8 +693,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
         borrarCapitulo(novelaId, boton.dataset.cap);
       });
     });
-    // Asignar eventos de forma segura: si un botÃƒÂ³n no existe (por ejemplo, en
-    // novela sin capÃƒÂ­tulos), no se rompe la aplicaciÃƒÂ³n.
     try {
       document.getElementById('b-anadir').addEventListener('click', () => dialogoCapitulo(novelaId, null));
       document.getElementById('b-cap-txt').addEventListener('click', () => dialogoImportarCapitulos(novelaId));
@@ -785,7 +745,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     document.getElementById('sig').disabled = indice < 0 || indice >= capitulos.length - 1;
 
     const parrafos = separarParrafos(capitulo.texto || '');
-    // El tÃƒÂ­tulo suele repetirse en la primera lÃƒÂ­nea al pegar: no se pinta dos veces.
     if (parrafos.length && capitulo.titulo
         && normalizar(parrafos[0]) === normalizar(capitulo.titulo)) {
       parrafos.shift();
@@ -802,7 +761,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     cajaLector.innerHTML = html;
     aplicarAjustes();
 
-    // Restaurar la posiciÃƒÂ³n de lectura de este capÃƒÂ­tulo.
     requestAnimationFrame(() => {
       const alto = document.documentElement.scrollHeight - window.innerHeight;
       if (alto > 0 && capitulo.pos > 0) {
@@ -829,7 +787,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
         estado.capitulo = actualizado;
         await dbPoner('capitulos', actualizado);
         await dbPoner('meta', { k: 'ultimo', novelaId: novelaId, capituloId: actualizado.id, cuando: Date.now() });
-        // Cada novela recuerda su ultimo capÃƒÂ­tulo para su boton Continuar.
         const novela = await dbVer('novelas', novelaId);
         if (novela && novela.ultimoCapId !== actualizado.id) {
           await dbPoner('novelas', Object.assign({}, novela, {
@@ -851,8 +808,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
 
   function separarParrafos(texto) {
     const limpio = String(texto || '').replace(/\r\n?/g, '\n');
-    // Lo normal es un parrafo por bloque separado por linea en blanco. Si el
-    // texto pegado no trae ninguna linea en blanco, cada salto es un parrafo.
     const cortes = /\n{2,}/.test(limpio) ? /\n{2,}/ : /\n/;
     return limpio
       .split(cortes)
@@ -866,10 +821,9 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
 
   function recortar(texto, maximo) {
     const limpio = String(texto || '');
-    return limpio.length > maximo ? limpio.slice(0, maximo - 1) + 'Ã¢â‚¬Â¦' : limpio;
+    return limpio.length > maximo ? limpio.slice(0, maximo - 1) + '…' : limpio;
   }
 
-  // ------------------------------------------------------------------ modales
   function abrirModal(html) {
     modalCaja.innerHTML = html;
     modal.hidden = false;
@@ -898,9 +852,9 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
   function dialogoNuevaNovela() {
     abrirModal(`
       <h2>Nueva novela</h2>
-      <p class="pista">Solo el tÃƒÂ­tulo es obligatorio. El autor es opcional.</p>
-      <div class="campo"><label for="n-titulo">TÃƒÂ­tulo</label><input id="n-titulo" placeholder="Ã©Â¦â€“Ã¥Â¯Å’Ã¥Â¾Å¾AIÃ¦ÂµÂªÃ¦Â½Â®Ã©â€“â€¹Ã¥Â§â€¹"></div>
-      <div class="campo"><label for="n-autor">Autor (opcional)</label><input id="n-autor" placeholder="Ã¨Â·Â¯Ã¥Â¤Â§Ã©Â Â­"></div>
+      <p class="pista">Solo el título es obligatorio. El autor es opcional.</p>
+      <div class="campo"><label for="n-titulo">Título</label><input id="n-titulo" placeholder="首富從AI浪潮開始"></div>
+      <div class="campo"><label for="n-autor">Autor (opcional)</label><input id="n-autor" placeholder="路大頭"></div>
       <div class="botones">
         <button class="principal" id="n-guardar">Crear</button>
         <button id="n-cancelar">Cancelar</button>
@@ -911,7 +865,7 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     document.getElementById('n-cancelar').addEventListener('click', cerrarModal);
     const crear = async () => {
       const titulo = entrada.value.trim();
-      if (!titulo) { aviso('Escribe un tÃƒÂ­tulo'); entrada.focus(); return; }
+      if (!titulo) { aviso('Escribe un título'); entrada.focus(); return; }
       const novela = {
         id: nuevoId(),
         titulo: titulo,
@@ -930,7 +884,7 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
   function dialogoEditarNovela(novela) {
     abrirModal(`
       <h2>Editar novela</h2>
-      <div class="campo"><label for="e-titulo">TÃƒÂ­tulo</label><input id="e-titulo" value="${escapar(novela.titulo)}"></div>
+      <div class="campo"><label for="e-titulo">Título</label><input id="e-titulo" value="${escapar(novela.titulo)}"></div>
       <div class="campo"><label for="e-autor">Autor</label><input id="e-autor" value="${escapar(novela.autor || '')}"></div>
       <hr class="separador">
       <div class="botones">
@@ -938,13 +892,13 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
         <button id="e-cancelar">Cancelar</button>
       </div>
       <div class="botones">
-        <button class="peligro" id="e-borrar">Borrar novela y sus capÃƒÂ­tulos</button>
+        <button class="peligro" id="e-borrar">Borrar novela y sus capítulos</button>
       </div>
     `);
     document.getElementById('e-cancelar').addEventListener('click', cerrarModal);
     document.getElementById('e-guardar').addEventListener('click', async () => {
       const titulo = document.getElementById('e-titulo').value.trim();
-      if (!titulo) { aviso('El tÃƒÂ­tulo no puede quedar vacÃƒÂ­o'); return; }
+      if (!titulo) { aviso('El título no puede quedar vacío'); return; }
       const actualizada = Object.assign({}, novela, {
         titulo: titulo,
         autor: document.getElementById('e-autor').value.trim(),
@@ -956,7 +910,7 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
       render();
     });
     document.getElementById('e-borrar').addEventListener('click', async () => {
-      if (!confirm('Ã‚Â¿Borrar Ã‚Â«' + novela.titulo + 'Ã‚Â» y todos sus capÃƒÂ­tulos? No se puede deshacer.')) { return; }
+      if (!confirm('¿Borrar «' + novela.titulo + '» y todos sus capítulos? No se puede deshacer.')) { return; }
       const capitulos = await capitulosDe(novela.id);
       for (const c of capitulos) { await dbBorrar('capitulos', c.id); }
       await dbBorrar('novelas', novela.id);
@@ -968,8 +922,8 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
   }
 
   function patronTitulo(linea) {
-    return /^[ \t]*(Ã§Â¬Â¬[0-9Ã¯Â¼Â-Ã¯Â¼â„¢Ã¤Â¸â‚¬Ã¤ÂºÅ’Ã¤Â¸â€°Ã¥â€ºâ€ºÃ¤Âºâ€Ã¥â€¦Â­Ã¤Â¸Æ’Ã¥â€¦Â«Ã¤Â¹ÂÃ¥ÂÂÃ§â„¢Â¾Ã¥ÂÆ’Ã©â€ºÂ¶Ã£â‚¬â€¡Ã¤Â¸Â¤]+[Ã§Â«Â Ã¨Å â€šÃ¥â€ºÅ¾Ã¥ÂÂ·][^\n]{0,80})[ \t]*$/.test(linea)
-      || /^[ \t]*(cap[iÃƒÂ­]tulo\s+[0-9]+[^\n]{0,80})[ \t]*$/i.test(linea);
+    return /^[ \t]*(第[0-9０-９一二三四五六七八九十百千零〇两]+[章节回卷][^\n]{0,80})[ \t]*$/.test(linea)
+      || /^[ \t]*(cap[ií]tulo\s+[0-9]+[^\n]{0,80})[ \t]*$/i.test(linea);
   }
 
   function siguienteNumero(capitulos) {
@@ -983,12 +937,9 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     return n;
   }
 
-  // Les asigna nÃƒÂºmeros correlativos 1, 2, 3Ã¢â‚¬Â¦ segÃƒÂºn el orden en que aparecen
-  // en la lista (ya ordenada por nÃƒÂºmero de tÃƒÂ­tulo o por fecha).
-  // Las notas del autor (sin nÃƒÂºmero real) se dejan al final y no se les toca.
   async function reordenarCapitulos(novelaId) {
     const capitulos = (await capitulosDe(novelaId)).sort(compararCapitulos);
-    if (!capitulos.length) { aviso('No hay capÃƒÂ­tulos que reordenar'); return; }
+    if (!capitulos.length) { aviso('No hay capítulos que reordenar'); return; }
     let cambios = 0;
     let contador = 1;
     for (let i = 0; i < capitulos.length; i += 1) {
@@ -1003,18 +954,16 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     }
     cerrarModal();
     if (cambios) {
-      aviso(cambios + (cambios === 1 ? ' capÃƒÂ­tulo reordenado' : ' capÃƒÂ­tulos reordenados'));
+      aviso(cambios + (cambios === 1 ? ' capítulo reordenado' : ' capítulos reordenados'));
     } else {
-      aviso('Ya estÃƒÂ¡n en orden');
+      aviso('Ya están en orden');
     }
     render();
   }
 
-  // La lista se ordena por el nÃƒÂºmero del tÃƒÂ­tulo, asÃƒÂ­ que ese nÃƒÂºmero se guarda:
-  // evita que Ã‚Â«CapÃƒÂ­tulo 9Ã‚Â» aparezca despuÃƒÂ©s de Ã‚Â«CapÃƒÂ­tulo 10Ã‚Â».
   async function renumerar(novelaId) {
     const capitulos = (await capitulosDe(novelaId)).sort(compararCapitulos);
-    if (!capitulos.length) { aviso('No hay capÃƒÂ­tulos que ordenar'); return; }
+    if (!capitulos.length) { aviso('No hay capítulos que ordenar'); return; }
     const vistos = new Set();
     const repetidos = new Set();
     let cambios = 0;
@@ -1029,9 +978,9 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     }
     cerrarModal();
     if (cambios) {
-      aviso(cambios + (cambios === 1 ? ' capÃƒÂ­tulo ordenado' : ' capÃƒÂ­tulos ordenados'));
+      aviso(cambios + (cambios === 1 ? ' capítulo ordenado' : ' capítulos ordenados'));
     } else {
-      aviso('Ya estÃƒÂ¡n en orden');
+      aviso('Ya están en orden');
     }
     render();
   }
@@ -1039,7 +988,7 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
   async function borrarCapitulo(novelaId, capituloId) {
     const capitulo = await dbVer('capitulos', capituloId);
     if (!capitulo) { return; }
-    if (!confirm('Ã‚Â¿Borrar el capÃƒÂ­tulo "' + escapar(capitulo.titulo || 'Sin tÃƒÂ­tulo') + '"? No se puede deshacer.')) { return; }
+    if (!confirm('¿Borrar el capítulo "' + escapar(capitulo.titulo || 'Sin título') + '"? No se puede deshacer.')) { return; }
     await dbBorrar('capitulos', capituloId);
     await tocarNovela(novelaId);
     await olvidarUltimo(null, capituloId);
@@ -1049,24 +998,24 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     } else {
       render();
     }
-    aviso('CapÃƒÂ­tulo borrado');
+    aviso('Capítulo borrado');
   }
 
   function dialogoCapitulo(novelaId, capitulo) {
     abrirModal(`
-      <h2>${capitulo ? 'Editar capÃƒÂ­tulo' : 'AÃƒÂ±adir capÃƒÂ­tulo'}</h2>
-      <p class="pista">Pega el texto tal como te lo dÃƒÂ© Gemini. Los pÃƒÂ¡rrafos se separan con una lÃƒÂ­nea en blanco.</p>
+      <h2>${capitulo ? 'Editar capítulo' : 'Añadir capítulo'}</h2>
+      <p class="pista">Pega el texto tal como te lo dé Gemini. Los párrafos se separan con una línea en blanco.</p>
       <div class="fila-campos">
-        <div class="campo" style="flex:0 1 110px"><label for="c-num">NÃƒÂºmero</label><input id="c-num" type="number" min="0" step="1" value="${capitulo ? capitulo.num : ''}" placeholder="auto"></div>
-        <div class="campo"><label for="c-titulo">TÃƒÂ­tulo</label><input id="c-titulo" placeholder="se detecta del texto" value="${capitulo ? escapar(capitulo.titulo) : ''}"></div>
+        <div class="campo" style="flex:0 1 110px"><label for="c-num">Número</label><input id="c-num" type="number" min="0" step="1" value="${capitulo ? capitulo.num : ''}" placeholder="auto"></div>
+        <div class="campo"><label for="c-titulo">Título</label><input id="c-titulo" placeholder="se detecta del texto" value="${capitulo ? escapar(capitulo.titulo) : ''}"></div>
       </div>
-      <div class="campo"><label for="c-texto">Texto</label><textarea id="c-texto" placeholder="Pega aquÃƒÂ­ el capÃƒÂ­tulo traducidoÃ¢â‚¬Â¦">${capitulo ? escapar(capitulo.texto) : ''}</textarea></div>
+      <div class="campo"><label for="c-texto">Texto</label><textarea id="c-texto" placeholder="Pega aquí el capítulo traducido…">${capitulo ? escapar(capitulo.texto) : ''}</textarea></div>
       <div class="botones">
         <button id="c-pegar">Pegar del portapapeles</button>
         <button class="principal" id="c-guardar">Guardar</button>
         <button id="c-cancelar">Cancelar</button>
       </div>
-      ${capitulo ? '<div class="botones"><button id="c-bajar">Descargar .txt</button><button class="peligro" id="c-borrar">Borrar capÃƒÂ­tulo</button></div>' : ''}
+      ${capitulo ? '<div class="botones"><button id="c-bajar">Descargar .txt</button><button class="peligro" id="c-borrar">Borrar capítulo</button></div>' : ''}
     `);
     const titulo = document.getElementById('c-titulo');
     const texto = document.getElementById('c-texto');
@@ -1092,14 +1041,14 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     });
     document.getElementById('c-guardar').addEventListener('click', async () => {
       const contenido = texto.value.trim();
-      if (!contenido) { aviso('El capÃƒÂ­tulo estÃƒÂ¡ vacÃƒÂ­o'); texto.focus(); return; }
+      if (!contenido) { aviso('El capítulo está vacío'); texto.focus(); return; }
       detectar();
       const capitulos = await capitulosDe(novelaId);
       const actual = {
         id: capitulo ? capitulo.id : nuevoId(),
         novelaId: novelaId,
         num: Number(numero.value) || (capitulo ? capitulo.num : siguienteNumero(capitulos)),
-        titulo: titulo.value.trim() || ('CapÃƒÂ­tulo ' + (Number(numero.value) || siguienteNumero(capitulos))),
+        titulo: titulo.value.trim() || ('Capítulo ' + (Number(numero.value) || siguienteNumero(capitulos))),
         texto: contenido,
         pos: capitulo ? capitulo.pos : 0,
         leido: capitulo ? capitulo.leido : false,
@@ -1109,25 +1058,25 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
       const otro = capitulos.find((c) => c.id !== actual.id
         && normalizar(c.texto) === normalizar(actual.texto));
       if (otro) {
-        aviso('Ese texto ya estÃƒÂ¡ guardado');
+        aviso('Ese texto ya está guardado');
         return;
       }
       await dbPoner('capitulos', actual);
       await tocarNovela(novelaId);
       cerrarModal();
-      aviso(capitulo ? 'CapÃƒÂ­tulo actualizado' : 'CapÃƒÂ­tulo guardado');
+      aviso(capitulo ? 'Capítulo actualizado' : 'Capítulo guardado');
       render();
     });
     if (capitulo) {
       document.getElementById('c-bajar').addEventListener('click', () => descargarCapitulo(capitulo, estado.novela));
       document.getElementById('c-borrar').addEventListener('click', async () => {
-        if (!confirm('Ã‚Â¿Borrar este capÃƒÂ­tulo?')) { return; }
+        if (!confirm('¿Borrar este capítulo?')) { return; }
         await dbBorrar('capitulos', capitulo.id);
         await tocarNovela(novelaId);
         await olvidarUltimo(null, capitulo.id);
         cerrarModal();
         ir('#/n/' + novelaId);
-        aviso('CapÃƒÂ­tulo borrado');
+        aviso('Capítulo borrado');
       });
     }
     (capitulo ? texto : titulo).focus();
@@ -1141,7 +1090,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     }
   }
 
-  // Si se borra lo que apuntaba "Continuar", la marca deja de tener sentido.
   async function olvidarUltimo(novelaId, capituloId) {
     const ultimo = await dbVer('meta', 'ultimo');
     if (!ultimo) { return; }
@@ -1151,21 +1099,20 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     }
   }
 
-  // ------------------------------------------------------------- importar txt
   function dialogoImportarNovelas() {
     abrirModal(`
       <h2>Importar novelas</h2>
       <p class="pista">Cada archivo se convierte en una novela. Si el texto trae encabezados
-        como Ã‚Â«Ã§Â¬Â¬12Ã§Â«Â  Ã¢â‚¬Â¦Ã‚Â» o Ã‚Â«CapÃƒÂ­tulo 12Ã‚Â», se separa en capÃƒÂ­tulos automÃƒÂ¡ticamente.</p>
+        como «第12章 …» o «Capítulo 12», se separa en capítulos automáticamente.</p>
       <div class="campo"><label for="i-archivos">Archivos .txt</label><input id="i-archivos" type="file" accept=".txt,text/plain" multiple></div>
       <div class="dividir">
-        <span>Separar los capÃƒÂ­tulos por:</span>
+        <span>Separar los capítulos por:</span>
         <select id="i-dividir">
-          <option value="auto" ${ajustes.separar === 'auto' ? 'selected' : ''}>encabezado automÃƒÂ¡tico</option>
-          <option value="capitulo" ${ajustes.separar === 'capitulo' ? 'selected' : ''}>encabezado de capÃƒÂ­tulo</option>
-          <option value="nada" ${ajustes.separar === 'nada' ? 'selected' : ''}>un solo capÃƒÂ­tulo</option>
+          <option value="auto" ${ajustes.separar === 'auto' ? 'selected' : ''}>encabezado automático</option>
+          <option value="capitulo" ${ajustes.separar === 'capitulo' ? 'selected' : ''}>encabezado de capítulo</option>
+          <option value="nada" ${ajustes.separar === 'nada' ? 'selected' : ''}>un solo capítulo</option>
         </select>
-        <button class="orden" id="i-guardar-opcion">Recordar esta opciÃƒÂ³n</button>
+        <button class="orden" id="i-guardar-opcion">Recordar esta opción</button>
       </div>
       <div class="botones">
         <button class="principal" id="i-importar">Importar</button>
@@ -1176,15 +1123,13 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     document.getElementById('i-guardar-opcion').addEventListener('click', () => {
       ajustes.separar = document.getElementById('i-dividir').value;
       guardarJSON(CLAVE_AJUSTES, ajustes);
-      aviso('OpciÃƒÂ³n guardada');
+      aviso('Opción guardada');
     });
     document.getElementById('i-importar').addEventListener('click', async () => {
       const entrada = document.getElementById('i-archivos');
       const archivos = Array.from(entrada.files || []);
       if (!archivos.length) { aviso('Elige al menos un archivo'); return; }
       const opcion = document.getElementById('i-dividir').value;
-      // Ordenar archivos: primero los que tienen nÃƒÂºmero en el nombre (ascendente),
-      // luego los que no tienen nÃƒÂºmero alfabÃƒÂ©ticamente.
       archivos.sort((a, b) => {
         const na = extraerNumeroDeNombre(a.name);
         const nb = extraerNumeroDeNombre(b.name);
@@ -1243,26 +1188,25 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
       }
       cerrarModal();
       aviso('Importadas ' + nuevasNovelas + (nuevasNovelas === 1 ? ' novela' : ' novelas')
-        + ' y ' + nuevosCaps + (nuevosCaps === 1 ? ' capÃƒÂ­tulo' : ' capÃƒÂ­tulos'));
+        + ' y ' + nuevosCaps + (nuevosCaps === 1 ? ' capítulo' : ' capítulos'));
       render();
     });
   }
 
   async function dialogoImportarCapitulos(novelaId) {
-    const hayCaps = await capitulosDe(novelaId);
     abrirModal(`
-      <h2>Importar capÃƒÂ­tulos</h2>
-      <p class="pista">Cada archivo serÃƒÂ¡ un capÃƒÂ­tulo de esta novela. Si un capÃƒÂ­tulo con el mismo texto
-        ya existe, no se vuelve a meter. Los que ya tengas se ordenan por su nÃƒÂºmero.</p>
+      <h2>Importar capítulos</h2>
+      <p class="pista">Cada archivo será un capítulo de esta novela. Si un capítulo con el mismo texto
+        ya existe, no se vuelve a meter.</p>
       <div class="campo"><label for="ic-archivos">Archivos .txt</label><input id="ic-archivos" type="file" accept=".txt,text/plain" multiple></div>
       <div class="dividir">
-        <span>Si el archivo trae varios capÃƒÂ­tulos, sepÃƒÂ¡ralos por:</span>
+        <span>Si el archivo trae varios capítulos, sepáralos por:</span>
         <select id="ic-dividir">
-          <option value="auto" ${ajustes.separar === 'auto' ? 'selected' : ''}>automÃƒÂ¡tico</option>
-          <option value="capitulo" ${ajustes.separar === 'capitulo' ? 'selected' : ''}>encabezado de capÃƒÂ­tulo</option>
-          <option value="nada" ${ajustes.separar === 'nada' ? 'selected' : ''}>un solo capÃƒÂ­tulo</option>
+          <option value="auto" ${ajustes.separar === 'auto' ? 'selected' : ''}>automático</option>
+          <option value="capitulo" ${ajustes.separar === 'capitulo' ? 'selected' : ''}>encabezado de capítulo</option>
+          <option value="nada" ${ajustes.separar === 'nada' ? 'selected' : ''}>un solo capítulo</option>
         </select>
-        <button class="orden" id="ic-guardar-opcion">Recordar esta opciÃƒÂ³n</button>
+        <button class="orden" id="ic-guardar-opcion">Recordar esta opción</button>
       </div>
       <div class="botones">
         <button class="principal" id="ic-importar">Importar</button>
@@ -1273,14 +1217,12 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     document.getElementById('ic-guardar-opcion').addEventListener('click', () => {
       ajustes.separar = document.getElementById('ic-dividir').value;
       guardarJSON(CLAVE_AJUSTES, ajustes);
-      aviso('OpciÃƒÂ³n guardada');
+      aviso('Opción guardada');
     });
     document.getElementById('ic-importar').addEventListener('click', async () => {
       const archivos = Array.from(document.getElementById('ic-archivos').files || []);
       if (!archivos.length) { aviso('Elige al menos un archivo'); return; }
       const opcion = document.getElementById('ic-dividir').value;
-      // Ordenar archivos: primero los que tienen nÃƒÂºmero en el nombre (ascendente),
-      // luego los que no tienen nÃƒÂºmero (notas del autor, etc.) alfabÃƒÂ©ticamente.
       archivos.sort((a, b) => {
         const na = extraerNumeroDeNombre(a.name);
         const nb = extraerNumeroDeNombre(b.name);
@@ -1290,7 +1232,8 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
         return a.name.localeCompare(b.name);
       });
       const existentes = await capitulosDe(novelaId);
-      const vistos = indiceDeTextos(existentes);
+      const vistos = {};
+      for (const c of existentes) { vistos[normalizar(c.texto)] = true; }
       let numero = siguienteNumero(existentes);
       let total = 0;
       let repetidos = 0;
@@ -1304,8 +1247,8 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
           : dividirEnCapitulos(contenido, opcion);
         for (const parte of partes) {
           const clave = normalizarTexto(parte.texto);
-          if (vistos.has(clave)) { repetidos += 1; continue; }
-          vistos.set(clave, true);
+          if (vistos[clave]) { repetidos += 1; continue; }
+          vistos[clave] = true;
           const titulo = parte.titulo || archivo.name.replace(/\.txt$/i, '');
           const numDelTitulo = capituloDeTitulo(titulo);
           const numDelArchivo = extraerNumeroDeNombre(archivo.name);
@@ -1315,7 +1258,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
           } else if (numDelArchivo !== null) {
             numFinal = numDelArchivo;
           } else {
-            // Nota del autor sin nÃƒÂºmero: siempre va al final (999999+).
             numFinal = NUM_SIN_NUMERO + notaIndex;
             notaIndex += 1;
           }
@@ -1338,13 +1280,17 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
       await tocarNovela(novelaId);
       cerrarModal();
       if (!total) {
-        aviso('Ese capÃƒÂ­tulo ya estaba en la novela');
+        aviso('Ese capítulo ya estaba en la novela');
         return;
       }
-      aviso(total + (total === 1 ? ' capÃƒÂ­tulo importado' : ' capÃƒÂ­tulos importados')
-        + (repetidos ? ' Ã‚Â· ' + repetidos + ' repetidos ignorados' : ''));
+      aviso(total + (total === 1 ? ' capítulo importado' : ' capítulos importados')
+        + (repetidos ? ' · ' + repetidos + ' repetidos ignorados' : ''));
       render();
     });
+  }
+
+  function normalizarTexto(texto) {
+    return String(texto || '').replace(/\s+/g, ' ').trim();
   }
 
   function leerArchivo(archivo) {
@@ -1356,24 +1302,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     });
   }
 
-  function normalizarTexto(texto) {
-    return String(texto || '').replace(/\s+/g, ' ').trim();
-  }
-
-  // Dos capitulos con el mismo texto son el mismo capitulo: si ya existe, no se
-  // vuelve a meter. Esto es lo que hacia que se duplicaran al subir de nuevo.
-  function indiceDeTextos(capitulos) {
-    const mapa = new Map();
-    for (const c of capitulos) {
-      const clave = normalizarTexto(c.texto);
-      if (!mapa.has(clave)) { mapa.set(clave, c); }
-    }
-    return mapa;
-  }
-
-  // Separa un txt en capÃƒÂ­tulos usando encabezados reconocibles.
-  // modo: 'auto' (encabezados reconocibles y separadores ===/---),
-  // 'capitulo' (solo Ã‚Â«CapÃƒÂ­tulo NÃ‚Â» o Ã‚Â«Ã§Â¬Â¬NÃ§Â«Â Ã‚Â» en su propia lÃƒÂ­nea).
   function dividirEnCapitulos(texto, modo = 'auto') {
     const lineas = String(texto || '').replace(/\r\n?/g, '\n').split('\n');
     const marcas = [];
@@ -1385,11 +1313,11 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
         return;
       }
       if (modo === 'capitulo') {
-        const m = /^cap[iÃƒÂ­]tulo\s+([0-9]+)\b(.{0,60})$/i.exec(limpia);
+        const m = /^cap[ií]tulo\s+([0-9]+)\b(.{0,60})$/i.exec(limpia);
         if (m) { marcas.push({ indice, titulo: limpia }); return; }
       }
       if (modo === 'auto' || modo === 'capitulo') {
-        const separador = /^(?:={2,}|#{2,}|-{3,})\s*(?:cap[iÃƒÂ­]tulo\s*[0-9]*\s*[:Ã‚Â·-]?\s*)?(.*?)\s*(?:={2,}|#{2,}|-{3,})$/.exec(limpia);
+        const separador = /^(?:={2,}|#{2,}|-{3,})\s*(?:cap[ií]tulo\s*[0-9]*\s*[:·-]?\s*)?(.*?)\s*(?:={2,}|#{2,}|-{3,})$/.exec(limpia);
         if (separador) { marcas.push({ indice, titulo: separador[1].trim() }); }
       }
     });
@@ -1397,8 +1325,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
       return [{ titulo: '', texto: String(texto || '').trim() }];
     }
     const partes = [];
-    // Un prologo antes del primer encabezado se conserva, pero solo si es texto
-    // de verdad: el titulo y el autor del archivo exportado son dos lineas.
     const previo = lineas.slice(0, marcas[0].indice).join('\n').trim();
     if (previo.length > 400) { partes.push({ titulo: '', texto: previo }); }
     for (let i = 0; i < marcas.length; i += 1) {
@@ -1410,7 +1336,6 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     return partes.length ? partes : [{ titulo: '', texto: String(texto || '').trim() }];
   }
 
-  // ------------------------------------------------------------------ exportar
   function descargar(nombre, contenido) {
     const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -1428,7 +1353,7 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
   }
 
   function textoDeCapitulo(novela, capitulo) {
-    const titulo = (capitulo.num ? String(capitulo.num).padStart(3, '0') + ' Ã‚Â· ' : '') + (capitulo.titulo || '');
+    const titulo = (capitulo.num ? String(capitulo.num).padStart(3, '0') + ' · ' : '') + (capitulo.titulo || '');
     return titulo + '\n\n' + (capitulo.texto || '').trim() + '\n';
   }
 
@@ -1440,10 +1365,10 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
   async function exportarNovela(novelaId) {
     const novela = await dbVer('novelas', novelaId);
     const capitulos = (await capitulosDe(novelaId)).sort(compararCapitulos);
-    if (!novela || !capitulos.length) { aviso('No hay capÃƒÂ­tulos que exportar'); return; }
-    let texto = novela.titulo + (novela.autor ? ' Ã¢â‚¬â€ ' + novela.autor : '') + '\n\n';
+    if (!novela || !capitulos.length) { aviso('No hay capítulos que exportar'); return; }
+    let texto = novela.titulo + (novela.autor ? ' — ' + novela.autor : '') + '\n\n';
     for (const c of capitulos) {
-      texto += '\n\n=== CapÃƒÂ­tulo ' + (c.num || '') + ': ' + (c.titulo || '') + ' ===\n\n';
+      texto += '\n\n=== Capítulo ' + (c.num || '') + ': ' + (c.titulo || '') + ' ===\n\n';
       texto += (c.texto || '').trim() + '\n';
     }
     descargar(nombreSeguro(novela.titulo) + '.txt', texto);
@@ -1453,8 +1378,8 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
   function dialogoCopia() {
     abrirModal(`
       <h2>Copia de seguridad</h2>
-      <p class="pista">El archivo .json guarda novelas, capÃƒÂ­tulos y posiciones de lectura.
-        Sirve para pasar la biblioteca del PC al mÃƒÂ³vil o para no perderla.</p>
+      <p class="pista">El archivo .json guarda novelas, capítulos y posiciones de lectura.
+        Sirve para pasar la biblioteca del PC al móvil o para no perderla.</p>
       <div class="botones">
         <button class="principal" id="co-exportar">Descargar copia .json</button>
       </div>
@@ -1501,20 +1426,19 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
           if (!(await dbVer('meta', m.k))) { await dbPoner('meta', m); }
         }
         cerrarModal();
-        aviso('Restauradas ' + nuevas + ' novelas y ' + nuevosCaps + ' capÃƒÂ­tulos');
+        aviso('Restauradas ' + nuevas + ' novelas y ' + nuevosCaps + ' capítulos');
         render();
       } catch (error) {
-        aviso('El archivo no es una copia vÃƒÂ¡lida');
+        aviso('El archivo no es una copia válida');
       }
     });
   }
 
-  // ------------------------------------------------------------ ajustes lectura
   function dialogoAjustes() {
     abrirModal(`
       <h2>Ajustes de lectura</h2>
       <div class="ajuste">
-        <label>TamaÃƒÂ±o de letra <span id="v-fuente">${ajustes.fuente}px</span></label>
+        <label>Tamaño de letra <span id="v-fuente">${ajustes.fuente}px</span></label>
         <input id="a-fuente" type="range" min="15" max="30" step="1" value="${ajustes.fuente}">
       </div>
       <div class="ajuste">
@@ -1545,7 +1469,7 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
         <label>Texto</label>
         <div class="opciones">
           <button id="a-justificado" class="${ajustes.justificado ? 'activo' : ''}">Justificado</button>
-          <button id="a-raya" class="${ajustes.raya ? 'activo' : ''}">SangrÃƒÂ­a de pÃƒÂ¡rrafo</button>
+          <button id="a-raya" class="${ajustes.raya ? 'activo' : ''}">Sangría de párrafo</button>
         </div>
       </div>
       <div class="botones">
@@ -1595,57 +1519,47 @@ const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
     document.getElementById('a-cerrar').addEventListener('click', cerrarModal);
   }
 
-  // -------------------------------------------------------------- navegaciÃƒÂ³n
-  try {
-    btnAtras.addEventListener('click', () => {
-      const ruta = rutaActual();
-      if (ruta.vista === 'lector') { ir('#/n/' + ruta.novelaId); return; }
-      if (ruta.vista === 'novela') { ir('#/'); return; }
-      history.back();
-    });
+  btnAtras.addEventListener('click', () => {
+    const ruta = rutaActual();
+    if (ruta.vista === 'lector') { ir('#/n/' + ruta.novelaId); return; }
+    if (ruta.vista === 'novela') { ir('#/'); return; }
+    history.back();
+  });
 
-    btnAjustes.addEventListener('click', dialogoAjustes);
+  btnAjustes.addEventListener('click', dialogoAjustes);
 
-    btnEditarCap.addEventListener('click', () => {
-      if (estado.novela && estado.capitulo) {
-        dialogoCapitulo(estado.novela.id, estado.capitulo);
-      }
-    });
+  btnEditarCap.addEventListener('click', () => {
+    if (estado.novela && estado.capitulo) {
+      dialogoCapitulo(estado.novela.id, estado.capitulo);
+    }
+  });
 
-    document.getElementById('ant').addEventListener('click', () => {
-      const ruta = rutaActual();
-      if (ruta.vista !== 'lector') { return; }
-      const indice = estado.capitulos.findIndex((c) => c.id === ruta.capituloId);
-      if (indice > 0) { ir('#/n/' + ruta.novelaId + '/c/' + estado.capitulos[indice - 1].id); }
-    });
-    document.getElementById('sig').addEventListener('click', () => {
-      const ruta = rutaActual();
-      if (ruta.vista !== 'lector') { return; }
-      const indice = estado.capitulos.findIndex((c) => c.id === ruta.capituloId);
-      if (indice >= 0 && indice < estado.capitulos.length - 1) {
-        ir('#/n/' + ruta.novelaId + '/c/' + estado.capitulos[indice + 1].id);
-      }
-    });
-    document.getElementById('indice').addEventListener('click', () => {
-      const ruta = rutaActual();
-      if (ruta.vista === 'lector') { ir('#/n/' + ruta.novelaId); }
-    });
+  document.getElementById('ant').addEventListener('click', () => {
+    const ruta = rutaActual();
+    if (ruta.vista !== 'lector') { return; }
+    const indice = estado.capitulos.findIndex((c) => c.id === ruta.capituloId);
+    if (indice > 0) { ir('#/n/' + ruta.novelaId + '/c/' + estado.capitulos[indice - 1].id); }
+  });
+  document.getElementById('sig').addEventListener('click', () => {
+    const ruta = rutaActual();
+    if (ruta.vista !== 'lector') { return; }
+    const indice = estado.capitulos.findIndex((c) => c.id === ruta.capituloId);
+    if (indice >= 0 && indice < estado.capitulos.length - 1) {
+      ir('#/n/' + ruta.novelaId + '/c/' + estado.capitulos[indice + 1].id);
+    }
+  });
+  document.getElementById('indice').addEventListener('click', () => {
+    const ruta = rutaActual();
+    if (ruta.vista === 'lector') { ir('#/n/' + ruta.novelaId); }
+  });
 
-    window.addEventListener('hashchange', () => {
-      if (rutaActual().vista !== 'lector') { window.onscroll = null; }
-    });
-  } catch (e) {
-    console.error('Error asignando eventos de navegaciÃƒÂ³n:', e);
-  }
+  window.addEventListener('hashchange', () => {
+    if (rutaActual().vista !== 'lector') { window.onscroll = null; }
+  });
 
   aplicarAjustes();
   render();
 })();
 </script>
-`n`n</body>
+</body>
 </html>
-
-
-
-
-
