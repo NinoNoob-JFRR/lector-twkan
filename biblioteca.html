@@ -435,6 +435,15 @@
     return m ? Number(m[1]) : null;
   }
 
+  // Número usado para marcar capítulos sin número real (notas del autor, etc.).
+  // Siempre se ordenan al final, sin importar cuándo se importen.
+  const NUM_SIN_NUMERO = 999999;
+
+  function esCapituloSinNumero(c) {
+    const n = numeroDe(c);
+    return n !== null && n >= NUM_SIN_NUMERO;
+  }
+
   // ------------------------------------------------------------------ estado
   const estado = { novela: null, capitulo: null, capitulos: [], novelas: [], orden: 'asc' };
 
@@ -451,7 +460,7 @@
     const delTitulo = capituloDeTitulo(c.titulo);
     if (delTitulo !== null) { return delTitulo; }
     const n = Number(c.num);
-    if (Number.isFinite(n) && n > 0) { return n; }
+    if (Number.isFinite(n) && n > 0 && n < NUM_SIN_NUMERO) { return n; }
     return Number.MAX_SAFE_INTEGER;
   }
 
@@ -943,13 +952,17 @@
 
   // Les asigna números correlativos 1, 2, 3… según el orden en que aparecen
   // en la lista (ya ordenada por número de título o por fecha).
+  // Las notas del autor (sin número real) se dejan al final y no se les toca.
   async function reordenarCapitulos(novelaId) {
     const capitulos = (await capitulosDe(novelaId)).sort(compararCapitulos);
     if (!capitulos.length) { aviso('No hay capítulos que reordenar'); return; }
     let cambios = 0;
+    let contador = 1;
     for (let i = 0; i < capitulos.length; i += 1) {
       const c = capitulos[i];
-      const nuevo = i + 1;
+      if (esCapituloSinNumero(c)) { continue; }
+      const nuevo = contador;
+      contador += 1;
       if (c.num !== nuevo) {
         await dbPoner('capitulos', Object.assign({}, c, { num: nuevo, actualizado: Date.now() }));
         cambios += 1;
@@ -1152,6 +1165,7 @@
       let nuevosCaps = 0;
       const ahora = Date.now();
       let seg = 0;
+      let notaIndex = 0;
       for (const archivo of archivos) {
         const texto = await leerArchivo(archivo);
         const partes = opcion === 'nada'
@@ -1165,11 +1179,23 @@
         const yaTiene = await capitulosDe(novela.id);
         let numero = siguienteNumero(yaTiene);
         for (const parte of partes) {
+          const titulo = parte.titulo || archivo.name.replace(/\.txt$/i, '');
+          const numDelTitulo = capituloDeTitulo(titulo);
+          const numDelArchivo = extraerNumeroDeNombre(archivo.name);
+          let numFinal;
+          if (numDelTitulo !== null) {
+            numFinal = numDelTitulo;
+          } else if (numDelArchivo !== null) {
+            numFinal = numDelArchivo;
+          } else {
+            numFinal = NUM_SIN_NUMERO + notaIndex;
+            notaIndex += 1;
+          }
           const cap = {
             id: nuevoId(),
             novelaId: novela.id,
-            num: numero,
-            titulo: parte.titulo || archivo.name.replace(/\.txt$/i, ''),
+            num: numFinal,
+            titulo: titulo,
             texto: parte.texto,
             pos: 0,
             leido: false,
@@ -1237,6 +1263,7 @@
       let repetidos = 0;
       const ahora = Date.now();
       let seg = 0;
+      let notaIndex = 0;
       for (const archivo of archivos) {
         const contenido = await leerArchivo(archivo);
         const partes = opcion === 'nada'
@@ -1247,10 +1274,22 @@
           if (vistos.has(clave)) { repetidos += 1; continue; }
           vistos.set(clave, true);
           const titulo = parte.titulo || archivo.name.replace(/\.txt$/i, '');
+          const numDelTitulo = capituloDeTitulo(titulo);
+          const numDelArchivo = extraerNumeroDeNombre(archivo.name);
+          let numFinal;
+          if (numDelTitulo !== null) {
+            numFinal = numDelTitulo;
+          } else if (numDelArchivo !== null) {
+            numFinal = numDelArchivo;
+          } else {
+            // Nota del autor sin número: siempre va al final (999999+).
+            numFinal = NUM_SIN_NUMERO + notaIndex;
+            notaIndex += 1;
+          }
           await dbPoner('capitulos', {
             id: nuevoId(),
             novelaId: novelaId,
-            num: capituloDeTitulo(titulo) || numero,
+            num: numFinal,
             titulo: titulo,
             texto: parte.texto,
             pos: 0,
