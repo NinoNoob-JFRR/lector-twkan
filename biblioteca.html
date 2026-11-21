@@ -1,0 +1,1210 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="claro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mi biblioteca</title>
+<style>
+  :root {
+    color-scheme: light;
+    --fuente: 19px;
+    --interlineado: 1.75;
+    --ancho: 42rem;
+    --familia: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    --alineacion: justify;
+    --fondo: #f6f4ef;
+    --papel: #fffdf8;
+    --tinta: #1d1c1a;
+    --tenue: #6b675f;
+    --linea: #ddd8cd;
+    --acento: #1f6feb;
+    --sombra: 0 1px 3px rgba(20, 18, 14, .08);
+  }
+  html[data-theme="sepia"] {
+    --fondo: #efe4cf;
+    --papel: #f5ead6;
+    --tinta: #3b2f21;
+    --tenue: #7d6b54;
+    --linea: #d8c7a8;
+    --acento: #8a5a1f;
+  }
+  html[data-theme="oscuro"] {
+    color-scheme: dark;
+    --fondo: #14161a;
+    --papel: #1b1e23;
+    --tinta: #e6e3dc;
+    --tenue: #9a9a93;
+    --linea: #2c3138;
+    --acento: #6ea8fe;
+    --sombra: 0 1px 3px rgba(0, 0, 0, .4);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--fondo);
+    color: var(--tinta);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button {
+    border: 1px solid var(--linea);
+    background: var(--papel);
+    color: var(--tinta);
+    border-radius: 9px;
+    padding: 10px 14px;
+    cursor: pointer;
+    box-shadow: var(--sombra);
+  }
+  button:hover { border-color: var(--acento); }
+  button.principal { background: var(--acento); border-color: var(--acento); color: white; }
+  button.peligro { color: #b42318; }
+  button:disabled { opacity: .45; cursor: default; }
+  input, select, textarea {
+    width: 100%;
+    background: var(--papel);
+    border: 1px solid var(--linea);
+    border-radius: 9px;
+    padding: 10px 12px;
+  }
+  textarea { min-height: 220px; resize: vertical; line-height: 1.5; }
+  a { color: var(--acento); }
+
+  #barra {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px max(12px, env(safe-area-inset-left)) 10px max(12px, env(safe-area-inset-right));
+    background: color-mix(in srgb, var(--fondo) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--linea);
+  }
+  #barra-titulo {
+    flex: 1;
+    min-width: 0;
+    font-weight: 650;
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .icono {
+    flex: 0 0 auto;
+    min-width: 42px;
+    padding: 8px 10px;
+    font-size: 17px;
+    line-height: 1;
+  }
+  #barra .icono[hidden] { display: none; }
+
+  #progreso { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 30; background: transparent; }
+  #progreso[hidden] { display: none; }
+  #progreso-relleno { height: 100%; width: 0; background: var(--acento); transition: width .1s linear; }
+
+  main { padding: 18px max(14px, env(safe-area-inset-left)) 110px max(14px, env(safe-area-inset-right)); }
+  .contenedor { max-width: 780px; margin: 0 auto; }
+
+  h1.pequeno { font-size: 22px; margin: 6px 0 2px; }
+  .sub { color: var(--tenue); font-size: 14px; margin: 0 0 18px; }
+
+  .botones { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+  .botones button { flex: 0 1 auto; }
+
+  .tarjetas { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  .tarjeta {
+    background: var(--papel);
+    border: 1px solid var(--linea);
+    border-radius: 14px;
+    padding: 16px;
+    box-shadow: var(--sombra);
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .tarjeta strong { font-size: 17px; line-height: 1.25; }
+  .tarjeta span { color: var(--tenue); font-size: 13px; }
+
+  .lista { background: var(--papel); border: 1px solid var(--linea); border-radius: 14px; overflow: hidden; }
+  .fila {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 13px 15px;
+    border: 0;
+    border-bottom: 1px solid var(--linea);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    text-align: left;
+  }
+  .fila:last-child { border-bottom: 0; }
+  .fila:hover { background: color-mix(in srgb, var(--acento) 7%, transparent); }
+  .fila .num { color: var(--tenue); font-variant-numeric: tabular-nums; min-width: 3.2em; font-size: 13px; }
+  .fila .titulo { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fila .marca { font-size: 12px; color: var(--tenue); }
+  .fila.leido .titulo { color: var(--tenue); }
+
+  .vacio {
+    text-align: center;
+    color: var(--tenue);
+    padding: 40px 18px;
+    border: 1px dashed var(--linea);
+    border-radius: 14px;
+  }
+  .vacio h2 { color: var(--tinta); font-size: 18px; margin: 0 0 8px; }
+  .vacio p { margin: 8px 0; font-size: 14px; }
+
+  #lector {
+    max-width: var(--ancho);
+    margin: 0 auto;
+    font-family: var(--familia);
+    font-size: var(--fuente);
+    line-height: var(--interlineado);
+    text-align: var(--alineacion);
+    overflow-wrap: break-word;
+    word-break: normal;
+    hyphens: none;
+  }
+  #lector h2 { font-family: system-ui, sans-serif; font-size: 1.05em; text-align: left; color: var(--tenue); font-weight: 600; margin: 0 0 1.2em; }
+  #lector p { margin: 0 0 .9em; }
+  #lector.raya p { text-indent: 1.4em; margin-bottom: .45em; }
+
+  #nav-lector {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 25;
+    display: flex;
+    gap: 8px;
+    padding: 10px max(10px, env(safe-area-inset-left)) calc(10px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-right));
+    background: color-mix(in srgb, var(--fondo) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid var(--linea);
+  }
+  #nav-lector[hidden] { display: none; }
+  #nav-lector button { flex: 1; }
+  #nav-lector #indice { flex: .8; }
+
+  #modal {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: rgba(0, 0, 0, .5);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+  }
+  #modal[hidden] { display: none; }
+  #modal-caja {
+    background: var(--papel);
+    width: 100%;
+    max-width: 620px;
+    max-height: 92vh;
+    overflow: auto;
+    border-radius: 18px 18px 0 0;
+    padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+  }
+  @media (min-width: 700px) {
+    #modal { align-items: center; padding: 20px; }
+    #modal-caja { border-radius: 18px; }
+  }
+  #modal-caja h2 { margin: 0 0 4px; font-size: 19px; }
+  #modal-caja .pista { color: var(--tenue); font-size: 13px; margin: 0 0 14px; }
+  .campo { margin: 12px 0; }
+  .campo label { display: block; font-size: 13px; color: var(--tenue); margin-bottom: 5px; }
+  .fila-campos { display: flex; gap: 10px; flex-wrap: wrap; }
+  .fila-campos > .campo { flex: 1 1 160px; }
+
+  #aviso {
+    position: fixed;
+    left: 50%;
+    bottom: 86px;
+    transform: translateX(-50%);
+    z-index: 50;
+    margin: 0;
+    max-width: min(92vw, 480px);
+    padding: 11px 16px;
+    border-radius: 999px;
+    background: #1f6feb;
+    color: white;
+    font-size: 14px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .25);
+  }
+  #aviso[hidden] { display: none; }
+
+  .ajuste { margin: 16px 0; }
+  .ajuste label { display: flex; justify-content: space-between; font-size: 13px; color: var(--tenue); margin-bottom: 6px; }
+  .ajuste input[type="range"] { width: 100%; accent-color: var(--acento); }
+  .opciones { display: flex; gap: 8px; flex-wrap: wrap; }
+  .opciones button { flex: 1 1 auto; }
+  .opciones button.activo { border-color: var(--acento); background: color-mix(in srgb, var(--acento) 14%, var(--papel)); }
+
+  .meta { color: var(--tenue); font-size: 13px; }
+  .separador { border: 0; border-top: 1px solid var(--linea); margin: 18px 0; }
+</style>
+</head>
+<body>
+
+<header id="barra">
+  <button id="btn-atras" class="icono" title="Atrás" hidden>←</button>
+  <div id="barra-titulo">Mi biblioteca</div>
+  <button id="btn-ajustes" class="icono" title="Ajustes de lectura">Aa</button>
+</header>
+
+<div id="progreso" hidden><div id="progreso-relleno"></div></div>
+
+<main id="vista"><div class="contenedor"></div></main>
+
+<nav id="nav-lector" hidden>
+  <button id="ant">‹ Anterior</button>
+  <button id="indice">Índice</button>
+  <button id="sig">Siguiente ›</button>
+</nav>
+
+<div id="modal" hidden><div id="modal-caja"></div></div>
+<p id="aviso" hidden></p>
+
+<script>
+(function () {
+  'use strict';
+
+  // ------------------------------------------------------------------ ajustes
+  const CLAVE_AJUSTES = 'biblioteca.ajustes.v1';
+  const AJUSTES_BASE = {
+    fuente: 19,
+    interlineado: 1.75,
+    ancho: 42,
+    tema: 'claro',
+    justificado: true,
+    raya: false,
+    serif: true
+  };
+  let ajustes = Object.assign({}, AJUSTES_BASE, leerJSON(CLAVE_AJUSTES, {}));
+
+  function leerJSON(clave, porDefecto) {
+    try {
+      const raw = localStorage.getItem(clave);
+      return raw ? JSON.parse(raw) : porDefecto;
+    } catch (e) {
+      return porDefecto;
+    }
+  }
+  function guardarJSON(clave, valor) {
+    try { localStorage.setItem(clave, JSON.stringify(valor)); } catch (e) { /* sin almacenamiento */ }
+  }
+  guardarJSON(CLAVE_AJUSTES, ajustes);
+
+  function aplicarAjustes() {
+    const raiz = document.documentElement;
+    raiz.dataset.theme = ajustes.tema;
+    raiz.style.setProperty('--fuente', ajustes.fuente + 'px');
+    raiz.style.setProperty('--interlineado', String(ajustes.interlineado));
+    raiz.style.setProperty('--ancho', ajustes.ancho + 'rem');
+    raiz.style.setProperty('--familia', ajustes.serif
+      ? 'Georgia, "Iowan Old Style", "Times New Roman", serif'
+      : 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif');
+    raiz.style.setProperty('--alineacion', ajustes.justificado ? 'justify' : 'left');
+    const caja = document.getElementById('lector');
+    if (caja) { caja.classList.toggle('raya', ajustes.raya); }
+  }
+
+  // --------------------------------------------------------------- IndexedDB
+  const DB_NOMBRE = 'bibliotecaNovelas';
+  const DB_VERSION = 1;
+  let dbPromesa = null;
+
+  function abrirDB() {
+    if (dbPromesa) { return dbPromesa; }
+    dbPromesa = new Promise((resolver, rechazar) => {
+      if (!window.indexedDB) { rechazar(new Error('Este navegador no permite guardar datos.')); return; }
+      const peticion = indexedDB.open(DB_NOMBRE, DB_VERSION);
+      peticion.onupgradeneeded = () => {
+        const db = peticion.result;
+        if (!db.objectStoreNames.contains('novelas')) {
+          db.createObjectStore('novelas', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('capitulos')) {
+          const almacen = db.createObjectStore('capitulos', { keyPath: 'id' });
+          almacen.createIndex('novelaId', 'novelaId');
+        }
+        if (!db.objectStoreNames.contains('meta')) {
+          db.createObjectStore('meta', { keyPath: 'k' });
+        }
+      };
+      peticion.onsuccess = () => resolver(peticion.result);
+      peticion.onerror = () => rechazar(peticion.error);
+    });
+    return dbPromesa;
+  }
+
+  function tx(almacen, modo, accion) {
+    return abrirDB().then((db) => new Promise((resolver, rechazar) => {
+      const transaccion = db.transaction(almacen, modo);
+      const objeto = transaccion.objectStore(almacen);
+      let peticion;
+      try { peticion = accion(objeto); } catch (error) { rechazar(error); return; }
+      transaccion.oncomplete = () => {
+        // getAll() y get() devuelven una peticion: hay que resolver su resultado.
+        if (peticion && typeof peticion === 'object' && 'result' in peticion) {
+          resolver(peticion.result);
+        } else {
+          resolver(peticion);
+        }
+      };
+      transaccion.onerror = () => rechazar(transaccion.error);
+      transaccion.onabort = () => rechazar(transaccion.error);
+    }));
+  }
+
+  const dbTodo = (almacen) => tx(almacen, 'readonly', (o) => o.getAll());
+  const dbVer = (almacen, clave) => tx(almacen, 'readonly', (o) => o.get(clave));
+  const dbPoner = (almacen, valor) => tx(almacen, 'readwrite', (o) => o.put(valor));
+  const dbBorrar = (almacen, clave) => tx(almacen, 'readwrite', (o) => o.delete(clave));
+
+  function capitulosDe(novelaId) {
+    return abrirDB().then((db) => new Promise((resolver, rechazar) => {
+      const indice = db.transaction('capitulos', 'readonly').objectStore('capitulos').index('novelaId');
+      const peticion = indice.getAll(novelaId);
+      peticion.onsuccess = () => resolver(peticion.result);
+      peticion.onerror = () => rechazar(peticion.error);
+    }));
+  }
+
+  const nuevoId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+  // ------------------------------------------------------------------ estado
+  const estado = { novela: null, capitulo: null, capitulos: [], novelas: [] };
+
+  const vista = document.getElementById('vista');
+  const barraTitulo = document.getElementById('barra-titulo');
+  const btnAtras = document.getElementById('btn-atras');
+  const btnAjustes = document.getElementById('btn-ajustes');
+  const barraProgreso = document.getElementById('progreso');
+  const rellenoProgreso = document.getElementById('progreso-relleno');
+  const navLector = document.getElementById('nav-lector');
+  const modal = document.getElementById('modal');
+  const modalCaja = document.getElementById('modal-caja');
+
+  function aviso(texto) {
+    const caja = document.getElementById('aviso');
+    caja.textContent = texto;
+    caja.hidden = false;
+    clearTimeout(aviso.temporizador);
+    aviso.temporizador = setTimeout(() => { caja.hidden = true; }, 2600);
+  }
+
+  function escapar(texto) {
+    return String(texto == null ? '' : texto)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function fecha(ms) {
+    if (!ms) { return ''; }
+    try {
+      return new Date(ms).toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch (e) { return ''; }
+  }
+
+  // ------------------------------------------------------------------ rutas
+  // #/                      biblioteca
+  // #/n/<id>                novela
+  // #/n/<id>/c/<id>         lector
+  function rutaActual() {
+    const hash = location.hash.replace(/^#\/?/, '');
+    const partes = hash.split('/').filter(Boolean);
+    if (partes[0] === 'n' && partes[1]) {
+      if (partes[2] === 'c' && partes[3]) {
+        return { vista: 'lector', novelaId: partes[1], capituloId: partes[3] };
+      }
+      return { vista: 'novela', novelaId: partes[1] };
+    }
+    return { vista: 'biblioteca' };
+  }
+
+  function ir(hash) {
+    if (location.hash === hash) { render(); return; }
+    location.hash = hash;
+  }
+
+  window.addEventListener('hashchange', render);
+
+  // ---------------------------------------------------------------- dibujar
+  async function render() {
+    const ruta = rutaActual();
+    cerrarModal();
+    navLector.hidden = true;
+    barraProgreso.hidden = true;
+    try {
+      if (ruta.vista === 'lector') {
+        await pintarLector(ruta.novelaId, ruta.capituloId);
+      } else if (ruta.vista === 'novela') {
+        await pintarNovela(ruta.novelaId);
+      } else {
+        await pintarBiblioteca();
+      }
+    } catch (error) {
+      vista.querySelector('.contenedor').innerHTML =
+        '<div class="vacio"><h2>No se pudo abrir la biblioteca</h2><p>'
+        + escapar(error.message || error) + '</p></div>';
+    }
+    aplicarAjustes();
+  }
+
+  async function pintarBiblioteca() {
+    estado.novela = null;
+    estado.capitulo = null;
+    barraTitulo.textContent = 'Mi biblioteca';
+    btnAtras.hidden = true;
+
+    const novelas = (await dbTodo('novelas')).sort((a, b) => (b.actualizado || 0) - (a.actualizado || 0));
+    estado.novelas = novelas;
+    const capitulos = await dbTodo('capitulos');
+    const porNovela = new Map();
+    for (const c of capitulos) {
+      porNovela.set(c.novelaId, (porNovela.get(c.novelaId) || 0) + 1);
+    }
+    const ultimo = await dbVer('meta', 'ultimo');
+    const ultimoCap = ultimo && ultimo.capituloId ? capitulos.find((c) => c.id === ultimo.capituloId) : null;
+
+    let html = '<div class="contenedor">';
+    html += '<h1 class="pequeno">Tu biblioteca</h1>';
+    html += '<p class="sub">' + novelas.length + (novelas.length === 1 ? ' novela' : ' novelas')
+      + ' · ' + capitulos.length + (capitulos.length === 1 ? ' capítulo' : ' capítulos') + '</p>';
+
+    html += '<div class="botones">';
+    html += '<button class="principal" id="b-nueva">Nueva novela</button>';
+    html += '<button id="b-importar">Importar .txt</button>';
+    html += '<button id="b-copia">Copia de seguridad</button>';
+    html += '</div>';
+
+    if (ultimoCap && ultimo && ultimo.novelaId) {
+      const novela = novelas.find((n) => n.id === ultimo.novelaId);
+      if (novela) {
+        html += '<div class="botones"><button id="b-seguir">Continuar: '
+          + escapar(recortar(ultimoCap.titulo || 'capítulo', 42)) + '</button></div>';
+      }
+    }
+
+    if (!novelas.length) {
+      html += '<div class="vacio"><h2>Empieza aquí</h2>'
+        + '<p>Crea una novela, pega dentro los capítulos que traduzcas con Gemini y se guardarán en este navegador.</p>'
+        + '<p>También puedes importar un <strong>.txt</strong> o restaurar una copia de seguridad.</p>'
+        + '<p class="meta">Los capítulos también se pueden descargar como .txt para tenerlos en el PC.</p></div>';
+    } else {
+      html += '<div class="tarjetas">';
+      for (const n of novelas) {
+        html += '<button class="tarjeta" data-novela="' + n.id + '">'
+          + '<strong>' + escapar(n.titulo) + '</strong>'
+          + '<span>' + escapar(n.autor || 'Sin autor') + '</span>'
+          + '<span>' + (porNovela.get(n.id) || 0) + ' capítulos · ' + fecha(n.actualizado || n.creado) + '</span>'
+          + '</button>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+
+    vista.querySelector('.contenedor').innerHTML = html;
+
+    vista.querySelectorAll('[data-novela]').forEach((boton) => {
+      boton.addEventListener('click', () => ir('#/n/' + boton.dataset.novela));
+    });
+    document.getElementById('b-nueva').addEventListener('click', dialogoNuevaNovela);
+    document.getElementById('b-importar').addEventListener('click', dialogoImportarNovelas);
+    document.getElementById('b-copia').addEventListener('click', dialogoCopia);
+    const seguir = document.getElementById('b-seguir');
+    if (seguir) {
+      seguir.addEventListener('click', () => ir('#/n/' + ultimo.novelaId + '/c/' + ultimo.capituloId));
+    }
+  }
+
+  async function pintarNovela(novelaId) {
+    const novela = await dbVer('novelas', novelaId);
+    if (!novela) { ir('#/'); return; }
+    estado.novela = novela;
+    barraTitulo.textContent = novela.titulo;
+    btnAtras.hidden = false;
+
+    const capitulos = (await capitulosDe(novelaId)).sort((a, b) => (a.num || 0) - (b.num || 0));
+    estado.capitulos = capitulos;
+
+    let html = '<div class="contenedor">';
+    html += '<h1 class="pequeno">' + escapar(novela.titulo) + '</h1>';
+    html += '<p class="sub">' + escapar(novela.autor || 'Sin autor') + ' · ' + capitulos.length
+      + (capitulos.length === 1 ? ' capítulo' : ' capítulos') + '</p>';
+
+    html += '<div class="botones">';
+    html += '<button class="principal" id="b-anadir">Añadir capítulo</button>';
+    html += '<button id="b-cap-txt">Importar capítulos .txt</button>';
+    html += '<button id="b-exportar">Exportar novela .txt</button>';
+    html += '<button id="b-editar">Editar</button>';
+    html += '</div>';
+
+    if (!capitulos.length) {
+      html += '<div class="vacio"><h2>Sin capítulos</h2>'
+        + '<p>Pulsa <strong>Añadir capítulo</strong> y pega el texto que te haya dado Gemini.</p>'
+        + '<p class="meta">El título se rellena solo si el texto empieza por «第12章 …» o «Capítulo 12».</p></div>';
+    } else {
+      html += '<div class="lista">';
+      for (const c of capitulos) {
+        const porcentaje = Math.round((c.pos || 0) * 100);
+        html += '<button class="fila' + (c.leido ? ' leido' : '') + '" data-cap="' + c.id + '">'
+          + '<span class="num">' + (c.num || '·') + '</span>'
+          + '<span class="titulo">' + escapar(c.titulo || 'Sin título') + '</span>'
+          + '<span class="marca">' + (c.leido ? 'leído' : (porcentaje > 2 ? porcentaje + '%' : '')) + '</span>'
+          + '</button>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+
+    vista.querySelector('.contenedor').innerHTML = html;
+
+    vista.querySelectorAll('[data-cap]').forEach((boton) => {
+      boton.addEventListener('click', () => ir('#/n/' + novelaId + '/c/' + boton.dataset.cap));
+    });
+    document.getElementById('b-anadir').addEventListener('click', () => dialogoCapitulo(novelaId, null));
+    document.getElementById('b-cap-txt').addEventListener('click', dialogoImportarCapitulos(novelaId));
+    document.getElementById('b-exportar').addEventListener('click', () => exportarNovela(novelaId));
+    document.getElementById('b-editar').addEventListener('click', () => dialogoEditarNovela(novela));
+  }
+
+  async function pintarLector(novelaId, capituloId) {
+    const novela = await dbVer('novelas', novelaId);
+    const capitulo = await dbVer('capitulos', capituloId);
+    if (!novela || !capitulo) { ir('#/'); return; }
+    estado.novela = novela;
+    estado.capitulo = capitulo;
+
+    const capitulos = (await capitulosDe(novelaId)).sort((a, b) => (a.num || 0) - (b.num || 0));
+    estado.capitulos = capitulos;
+    const indice = capitulos.findIndex((c) => c.id === capituloId);
+
+    barraTitulo.textContent = capitulo.titulo || novela.titulo;
+    btnAtras.hidden = false;
+    navLector.hidden = false;
+    barraProgreso.hidden = false;
+    document.getElementById('ant').disabled = indice <= 0;
+    document.getElementById('sig').disabled = indice < 0 || indice >= capitulos.length - 1;
+
+    const parrafos = separarParrafos(capitulo.texto || '');
+    // El título suele repetirse en la primera línea al pegar: no se pinta dos veces.
+    if (parrafos.length && capitulo.titulo
+        && normalizar(parrafos[0]) === normalizar(capitulo.titulo)) {
+      parrafos.shift();
+    }
+
+    let html = '<div class="contenedor">';
+    html += '<article id="lector"><h2>' + escapar(capitulo.titulo || '') + '</h2>';
+    for (const parrafo of parrafos) {
+      html += '<p>' + parrafo.split('\n').map(escapar).join('<br>') + '</p>';
+    }
+    html += '</article></div>';
+
+    vista.querySelector('.contenedor').innerHTML = html;
+    aplicarAjustes();
+
+    // Restaurar la posición de lectura de este capítulo.
+    requestAnimationFrame(() => {
+      const alto = document.documentElement.scrollHeight - window.innerHeight;
+      if (alto > 0 && capitulo.pos > 0) {
+        window.scrollTo(0, Math.round(alto * Math.min(capitulo.pos, 1)));
+      } else {
+        window.scrollTo(0, 0);
+      }
+      actualizarBarraProgreso();
+    });
+
+    let temporizador = null;
+    const guardarPosicion = () => {
+      const alto = document.documentElement.scrollHeight - window.innerHeight;
+      const proporcion = alto > 0 ? Math.min(window.scrollY / alto, 1) : 0;
+      actualizarBarraProgreso();
+      clearTimeout(temporizador);
+      temporizador = setTimeout(async () => {
+        if (!estado.capitulo) { return; }
+        const actualizado = Object.assign({}, estado.capitulo, {
+          pos: proporcion,
+          leido: proporcion > 0.92 || estado.capitulo.leido,
+          actualizado: Date.now()
+        });
+        estado.capitulo = actualizado;
+        await dbPoner('capitulos', actualizado);
+        await dbPoner('meta', { k: 'ultimo', novelaId: novelaId, capituloId: actualizado.id, cuando: Date.now() });
+      }, 350);
+    };
+    window.onscroll = guardarPosicion;
+    guardarPosicion();
+  }
+
+  function actualizarBarraProgreso() {
+    const alto = document.documentElement.scrollHeight - window.innerHeight;
+    const proporcion = alto > 0 ? Math.min(window.scrollY / alto, 1) : 1;
+    rellenoProgreso.style.width = (proporcion * 100).toFixed(1) + '%';
+  }
+
+  function separarParrafos(texto) {
+    const limpio = String(texto || '').replace(/\r\n?/g, '\n');
+    // Lo normal es un parrafo por bloque separado por linea en blanco. Si el
+    // texto pegado no trae ninguna linea en blanco, cada salto es un parrafo.
+    const cortes = /\n{2,}/.test(limpio) ? /\n{2,}/ : /\n/;
+    return limpio
+      .split(cortes)
+      .map((p) => p.replace(/^[ \t]+|[ \t]+$/g, ''))
+      .filter((p) => p.length > 0);
+  }
+
+  function normalizar(texto) {
+    return String(texto || '').replace(/\s+/g, '').toLowerCase();
+  }
+
+  function recortar(texto, maximo) {
+    const limpio = String(texto || '');
+    return limpio.length > maximo ? limpio.slice(0, maximo - 1) + '…' : limpio;
+  }
+
+  // ------------------------------------------------------------------ modales
+  function abrirModal(html) {
+    modalCaja.innerHTML = html;
+    modal.hidden = false;
+    modalCaja.scrollTop = 0;
+  }
+
+  function cerrarModal() {
+    modal.hidden = true;
+    modalCaja.innerHTML = '';
+  }
+
+  modal.addEventListener('click', (evento) => {
+    if (evento.target === modal) { cerrarModal(); }
+  });
+
+  document.addEventListener('keydown', (evento) => {
+    if (evento.key === 'Escape') {
+      if (!modal.hidden) { cerrarModal(); return; }
+    }
+    if (modal.hidden && rutaActual().vista === 'lector') {
+      if (evento.key === 'ArrowRight') { document.getElementById('sig').click(); }
+      if (evento.key === 'ArrowLeft') { document.getElementById('ant').click(); }
+    }
+  });
+
+  function dialogoNuevaNovela() {
+    abrirModal(`
+      <h2>Nueva novela</h2>
+      <p class="pista">Solo el título es obligatorio. El autor es opcional.</p>
+      <div class="campo"><label for="n-titulo">Título</label><input id="n-titulo" placeholder="首富從AI浪潮開始"></div>
+      <div class="campo"><label for="n-autor">Autor (opcional)</label><input id="n-autor" placeholder="路大頭"></div>
+      <div class="botones">
+        <button class="principal" id="n-guardar">Crear</button>
+        <button id="n-cancelar">Cancelar</button>
+      </div>
+    `);
+    const entrada = document.getElementById('n-titulo');
+    entrada.focus();
+    document.getElementById('n-cancelar').addEventListener('click', cerrarModal);
+    const crear = async () => {
+      const titulo = entrada.value.trim();
+      if (!titulo) { aviso('Escribe un título'); entrada.focus(); return; }
+      const novela = {
+        id: nuevoId(),
+        titulo: titulo,
+        autor: document.getElementById('n-autor').value.trim(),
+        creado: Date.now(),
+        actualizado: Date.now()
+      };
+      await dbPoner('novelas', novela);
+      cerrarModal();
+      ir('#/n/' + novela.id);
+    };
+    document.getElementById('n-guardar').addEventListener('click', crear);
+    entrada.addEventListener('keydown', (evento) => { if (evento.key === 'Enter') { crear(); } });
+  }
+
+  function dialogoEditarNovela(novela) {
+    abrirModal(`
+      <h2>Editar novela</h2>
+      <div class="campo"><label for="e-titulo">Título</label><input id="e-titulo" value="${escapar(novela.titulo)}"></div>
+      <div class="campo"><label for="e-autor">Autor</label><input id="e-autor" value="${escapar(novela.autor || '')}"></div>
+      <hr class="separador">
+      <div class="botones">
+        <button class="principal" id="e-guardar">Guardar</button>
+        <button id="e-cancelar">Cancelar</button>
+      </div>
+      <div class="botones">
+        <button class="peligro" id="e-borrar">Borrar novela y sus capítulos</button>
+      </div>
+    `);
+    document.getElementById('e-cancelar').addEventListener('click', cerrarModal);
+    document.getElementById('e-guardar').addEventListener('click', async () => {
+      const titulo = document.getElementById('e-titulo').value.trim();
+      if (!titulo) { aviso('El título no puede quedar vacío'); return; }
+      const actualizada = Object.assign({}, novela, {
+        titulo: titulo,
+        autor: document.getElementById('e-autor').value.trim(),
+        actualizado: Date.now()
+      });
+      await dbPoner('novelas', actualizada);
+      cerrarModal();
+      aviso('Novela actualizada');
+      render();
+    });
+    document.getElementById('e-borrar').addEventListener('click', async () => {
+      if (!confirm('¿Borrar «' + novela.titulo + '» y todos sus capítulos? No se puede deshacer.')) { return; }
+      const capitulos = await capitulosDe(novela.id);
+      for (const c of capitulos) { await dbBorrar('capitulos', c.id); }
+      await dbBorrar('novelas', novela.id);
+      cerrarModal();
+      ir('#/');
+      aviso('Novela borrada');
+    });
+  }
+
+  function patronTitulo(linea) {
+    return /^[ \t]*(第[0-9０-９一二三四五六七八九十百千零〇两]+[章节回卷][^\n]{0,40})[ \t]*$/.test(linea)
+      || /^[ \t]*(cap[ií]tulo\s+[0-9]+[^\n]{0,40})[ \t]*$/i.test(linea);
+  }
+
+  function siguienteNumero(capitulos) {
+    return capitulos.reduce((maximo, c) => Math.max(maximo, Number(c.num) || 0), 0) + 1;
+  }
+
+  function dialogoCapitulo(novelaId, capitulo) {
+    abrirModal(`
+      <h2>${capitulo ? 'Editar capítulo' : 'Añadir capítulo'}</h2>
+      <p class="pista">Pega el texto tal como te lo dé Gemini. Los párrafos se separan con una línea en blanco.</p>
+      <div class="fila-campos">
+        <div class="campo" style="flex:0 1 110px"><label for="c-num">Número</label><input id="c-num" type="number" min="0" step="1" value="${capitulo ? capitulo.num : ''}" placeholder="auto"></div>
+        <div class="campo"><label for="c-titulo">Título</label><input id="c-titulo" placeholder="se detecta del texto" value="${capitulo ? escapar(capitulo.titulo) : ''}"></div>
+      </div>
+      <div class="campo"><label for="c-texto">Texto</label><textarea id="c-texto" placeholder="Pega aquí el capítulo traducido…">${capitulo ? escapar(capitulo.texto) : ''}</textarea></div>
+      <div class="botones">
+        <button id="c-pegar">Pegar del portapapeles</button>
+        <button class="principal" id="c-guardar">Guardar</button>
+        <button id="c-cancelar">Cancelar</button>
+      </div>
+      ${capitulo ? '<div class="botones"><button id="c-bajar">Descargar .txt</button><button class="peligro" id="c-borrar">Borrar capítulo</button></div>' : ''}
+    `);
+    const titulo = document.getElementById('c-titulo');
+    const texto = document.getElementById('c-texto');
+    const numero = document.getElementById('c-num');
+
+    const detectar = () => {
+      if (titulo.value.trim()) { return; }
+      const primera = texto.value.split('\n').find((l) => l.trim());
+      if (primera && patronTitulo(primera)) { titulo.value = primera.trim(); }
+    };
+    texto.addEventListener('paste', () => setTimeout(detectar, 30));
+    texto.addEventListener('input', () => setTimeout(detectar, 120));
+
+    document.getElementById('c-cancelar').addEventListener('click', cerrarModal);
+    document.getElementById('c-pegar').addEventListener('click', async () => {
+      try {
+        texto.value = await navigator.clipboard.readText();
+        detectar();
+      } catch (error) {
+        aviso('El navegador no deja leer el portapapeles: pega con Ctrl+V');
+        texto.focus();
+      }
+    });
+    document.getElementById('c-guardar').addEventListener('click', async () => {
+      const contenido = texto.value.trim();
+      if (!contenido) { aviso('El capítulo está vacío'); texto.focus(); return; }
+      detectar();
+      const capitulos = await capitulosDe(novelaId);
+      const actual = {
+        id: capitulo ? capitulo.id : nuevoId(),
+        novelaId: novelaId,
+        num: Number(numero.value) || (capitulo ? capitulo.num : siguienteNumero(capitulos)),
+        titulo: titulo.value.trim() || ('Capítulo ' + (Number(numero.value) || siguienteNumero(capitulos))),
+        texto: contenido,
+        pos: capitulo ? capitulo.pos : 0,
+        leido: capitulo ? capitulo.leido : false,
+        creado: capitulo ? capitulo.creado : Date.now(),
+        actualizado: Date.now()
+      };
+      await dbPoner('capitulos', actual);
+      await tocarNovela(novelaId);
+      cerrarModal();
+      aviso(capitulo ? 'Capítulo actualizado' : 'Capítulo guardado');
+      render();
+    });
+    if (capitulo) {
+      document.getElementById('c-bajar').addEventListener('click', () => descargarCapitulo(capitulo, estado.novela));
+      document.getElementById('c-borrar').addEventListener('click', async () => {
+        if (!confirm('¿Borrar este capítulo?')) { return; }
+        await dbBorrar('capitulos', capitulo.id);
+        await tocarNovela(novelaId);
+        cerrarModal();
+        ir('#/n/' + novelaId);
+        aviso('Capítulo borrado');
+      });
+    }
+    (capitulo ? texto : titulo).focus();
+  }
+
+  async function tocarNovela(novelaId) {
+    const novela = await dbVer('novelas', novelaId);
+    if (novela) {
+      novela.actualizado = Date.now();
+      await dbPoner('novelas', novela);
+    }
+  }
+
+  // ------------------------------------------------------------- importar txt
+  function dialogoImportarNovelas() {
+    abrirModal(`
+      <h2>Importar novelas</h2>
+      <p class="pista">Cada archivo se convierte en una novela. Si el texto trae encabezados
+        como «第12章 …» o «Capítulo 12», se separa en capítulos automáticamente.</p>
+      <div class="campo"><label for="i-archivos">Archivos .txt</label><input id="i-archivos" type="file" accept=".txt,text/plain" multiple></div>
+      <div class="botones">
+        <button class="principal" id="i-importar">Importar</button>
+        <button id="i-cancelar">Cancelar</button>
+      </div>
+    `);
+    document.getElementById('i-cancelar').addEventListener('click', cerrarModal);
+    document.getElementById('i-importar').addEventListener('click', async () => {
+      const entrada = document.getElementById('i-archivos');
+      const archivos = Array.from(entrada.files || []);
+      if (!archivos.length) { aviso('Elige al menos un archivo'); return; }
+      let novelas = 0;
+      let capitulos = 0;
+      for (const archivo of archivos) {
+        const texto = await leerArchivo(archivo);
+        const nombre = archivo.name.replace(/\.txt$/i, '');
+        const novela = { id: nuevoId(), titulo: nombre, autor: '', creado: Date.now(), actualizado: Date.now() };
+        await dbPoner('novelas', novela);
+        novelas += 1;
+        const partes = dividirEnCapitulos(texto);
+        let indice = 1;
+        for (const parte of partes) {
+          const cap = {
+            id: nuevoId(),
+            novelaId: novela.id,
+            num: indice,
+            titulo: parte.titulo || ('Capítulo ' + indice),
+            texto: parte.texto,
+            pos: 0,
+            leido: false,
+            creado: Date.now(),
+            actualizado: Date.now()
+          };
+          await dbPoner('capitulos', cap);
+          capitulos += 1;
+          indice += 1;
+        }
+      }
+      cerrarModal();
+      aviso('Importadas ' + novelas + ' novelas y ' + capitulos + ' capítulos');
+      render();
+    });
+  }
+
+  function dialogoImportarCapitulos(novelaId) {
+    abrirModal(`
+      <h2>Importar capítulos</h2>
+      <p class="pista">Cada archivo será un capítulo de esta novela. El nombre del archivo se usa como título.</p>
+      <div class="campo"><label for="ic-archivos">Archivos .txt</label><input id="ic-archivos" type="file" accept=".txt,text/plain" multiple></div>
+      <div class="botones">
+        <button class="principal" id="ic-importar">Importar</button>
+        <button id="ic-cancelar">Cancelar</button>
+      </div>
+    `);
+    document.getElementById('ic-cancelar').addEventListener('click', cerrarModal);
+    document.getElementById('ic-importar').addEventListener('click', async () => {
+      const archivos = Array.from(document.getElementById('ic-archivos').files || []);
+      if (!archivos.length) { aviso('Elige al menos un archivo'); return; }
+      const existentes = await capitulosDe(novelaId);
+      let numero = siguienteNumero(existentes);
+      let total = 0;
+      for (const archivo of archivos) {
+        const contenido = await leerArchivo(archivo);
+        const partes = dividirEnCapitulos(contenido);
+        for (const parte of partes) {
+          await dbPoner('capitulos', {
+            id: nuevoId(),
+            novelaId: novelaId,
+            num: numero,
+            titulo: parte.titulo || archivo.name.replace(/\.txt$/i, ''),
+            texto: parte.texto,
+            pos: 0,
+            leido: false,
+            creado: Date.now(),
+            actualizado: Date.now()
+          });
+          numero += 1;
+          total += 1;
+        }
+      }
+      await tocarNovela(novelaId);
+      cerrarModal();
+      aviso(total + ' capítulos importados');
+      render();
+    });
+  }
+
+  function leerArchivo(archivo) {
+    return new Promise((resolver, rechazar) => {
+      const lector = new FileReader();
+      lector.onload = () => resolver(String(lector.result || ''));
+      lector.onerror = () => rechazar(lector.error);
+      lector.readAsText(archivo, 'utf-8');
+    });
+  }
+
+  // Separa un txt en capítulos usando encabezados reconocibles.
+  function dividirEnCapitulos(texto) {
+    const lineas = texto.replace(/\r\n?/g, '\n').split('\n');
+    const marcas = [];
+    lineas.forEach((linea, indice) => {
+      const limpia = linea.trim();
+      if (!limpia) { return; }
+      if (patronTitulo(limpia)) { marcas.push({ indice, titulo: limpia.replace(/^[=#*\s]+|[=#*\s]+$/g, '') }); return; }
+      const separador = /^(?:={2,}|#{2,}|-{3,})\s*(?:cap[ií]tulo\s*[0-9]*\s*[:·-]?\s*)?(.*?)\s*(?:={2,}|#{2,}|-{3,})$/.exec(limpia);
+      if (separador) { marcas.push({ indice, titulo: separador[1].trim() }); }
+    });
+    if (marcas.length < 1) {
+      return [{ titulo: '', texto: texto.trim() }];
+    }
+    const partes = [];
+    // Un prologo antes del primer encabezado se conserva, pero solo si es texto
+    // de verdad: el titulo y el autor del archivo exportado son dos lineas.
+    const previo = lineas.slice(0, marcas[0].indice).join('\n').trim();
+    if (previo.length > 400) { partes.push({ titulo: '', texto: previo }); }
+    for (let i = 0; i < marcas.length; i += 1) {
+      const desde = marcas[i].indice + 1;
+      const hasta = i + 1 < marcas.length ? marcas[i + 1].indice : lineas.length;
+      const cuerpo = lineas.slice(desde, hasta).join('\n').trim();
+      if (cuerpo) { partes.push({ titulo: marcas[i].titulo, texto: cuerpo }); }
+    }
+    return partes.length ? partes : [{ titulo: '', texto: texto.trim() }];
+  }
+
+  // ------------------------------------------------------------------ exportar
+  function descargar(nombre, contenido) {
+    const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = nombre;
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  function nombreSeguro(texto) {
+    return String(texto || 'sin-titulo').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 80);
+  }
+
+  function textoDeCapitulo(novela, capitulo) {
+    const titulo = (capitulo.num ? String(capitulo.num).padStart(3, '0') + ' · ' : '') + (capitulo.titulo || '');
+    return titulo + '\n\n' + (capitulo.texto || '').trim() + '\n';
+  }
+
+  function descargarCapitulo(capitulo, novela) {
+    const nombre = nombreSeguro((novela ? novela.titulo + ' - ' : '') + textoDeCapitulo(novela, capitulo).split('\n')[0]) + '.txt';
+    descargar(nombre, textoDeCapitulo(novela, capitulo));
+  }
+
+  async function exportarNovela(novelaId) {
+    const novela = await dbVer('novelas', novelaId);
+    const capitulos = (await capitulosDe(novelaId)).sort((a, b) => (a.num || 0) - (b.num || 0));
+    if (!novela || !capitulos.length) { aviso('No hay capítulos que exportar'); return; }
+    let texto = novela.titulo + (novela.autor ? ' — ' + novela.autor : '') + '\n\n';
+    for (const c of capitulos) {
+      texto += '\n\n=== Capítulo ' + (c.num || '') + ': ' + (c.titulo || '') + ' ===\n\n';
+      texto += (c.texto || '').trim() + '\n';
+    }
+    descargar(nombreSeguro(novela.titulo) + '.txt', texto);
+    aviso('Novela exportada');
+  }
+
+  function dialogoCopia() {
+    abrirModal(`
+      <h2>Copia de seguridad</h2>
+      <p class="pista">El archivo .json guarda novelas, capítulos y posiciones de lectura.
+        Sirve para pasar la biblioteca del PC al móvil o para no perderla.</p>
+      <div class="botones">
+        <button class="principal" id="co-exportar">Descargar copia .json</button>
+      </div>
+      <hr class="separador">
+      <div class="campo"><label for="co-archivo">Restaurar una copia</label><input id="co-archivo" type="file" accept=".json,application/json"></div>
+      <div class="botones">
+        <button id="co-importar">Restaurar</button>
+        <button id="co-cancelar">Cerrar</button>
+      </div>
+    `);
+    document.getElementById('co-cancelar').addEventListener('click', cerrarModal);
+    document.getElementById('co-exportar').addEventListener('click', async () => {
+      const copia = {
+        app: 'biblioteca-novelas',
+        version: 1,
+        exportado: Date.now(),
+        novelas: await dbTodo('novelas'),
+        capitulos: await dbTodo('capitulos'),
+        ajustes: ajustes
+      };
+      descargar('biblioteca-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify(copia, null, 2));
+      aviso('Copia descargada');
+    });
+    document.getElementById('co-importar').addEventListener('click', async () => {
+      const archivo = (document.getElementById('co-archivo').files || [])[0];
+      if (!archivo) { aviso('Elige un archivo .json'); return; }
+      try {
+        const copia = JSON.parse(await leerArchivo(archivo));
+        const novelas = Array.isArray(copia.novelas) ? copia.novelas : [];
+        const capitulos = Array.isArray(copia.capitulos) ? copia.capitulos : [];
+        let nuevas = 0;
+        let nuevosCaps = 0;
+        for (const n of novelas) {
+          if (!n || !n.id) { continue; }
+          if (!(await dbVer('novelas', n.id))) { await dbPoner('novelas', n); nuevas += 1; }
+        }
+        for (const c of capitulos) {
+          if (!c || !c.id || !c.novelaId) { continue; }
+          if (!(await dbVer('capitulos', c.id))) { await dbPoner('capitulos', c); nuevosCaps += 1; }
+        }
+        cerrarModal();
+        aviso('Restauradas ' + nuevas + ' novelas y ' + nuevosCaps + ' capítulos');
+        render();
+      } catch (error) {
+        aviso('El archivo no es una copia válida');
+      }
+    });
+  }
+
+  // ------------------------------------------------------------ ajustes lectura
+  function dialogoAjustes() {
+    abrirModal(`
+      <h2>Ajustes de lectura</h2>
+      <div class="ajuste">
+        <label>Tamaño de letra <span id="v-fuente">${ajustes.fuente}px</span></label>
+        <input id="a-fuente" type="range" min="15" max="30" step="1" value="${ajustes.fuente}">
+      </div>
+      <div class="ajuste">
+        <label>Interlineado <span id="v-interlineado">${ajustes.interlineado}</span></label>
+        <input id="a-interlineado" type="range" min="1.3" max="2.2" step="0.05" value="${ajustes.interlineado}">
+      </div>
+      <div class="ajuste">
+        <label>Ancho del texto <span id="v-ancho">${ajustes.ancho} rem</span></label>
+        <input id="a-ancho" type="range" min="30" max="60" step="1" value="${ajustes.ancho}">
+      </div>
+      <div class="ajuste">
+        <label>Tema</label>
+        <div class="opciones" id="a-tema">
+          <button data-tema="claro" class="${ajustes.tema === 'claro' ? 'activo' : ''}">Claro</button>
+          <button data-tema="sepia" class="${ajustes.tema === 'sepia' ? 'activo' : ''}">Sepia</button>
+          <button data-tema="oscuro" class="${ajustes.tema === 'oscuro' ? 'activo' : ''}">Oscuro</button>
+        </div>
+      </div>
+      <div class="ajuste">
+        <label>Fuente</label>
+        <div class="opciones" id="a-fuente-tipo">
+          <button data-serif="1" class="${ajustes.serif ? 'activo' : ''}">Con serifa (libro)</button>
+          <button data-serif="0" class="${!ajustes.serif ? 'activo' : ''}">Sin serifa</button>
+        </div>
+      </div>
+      <div class="ajuste">
+        <label>Texto</label>
+        <div class="opciones">
+          <button id="a-justificado" class="${ajustes.justificado ? 'activo' : ''}">Justificado</button>
+          <button id="a-raya" class="${ajustes.raya ? 'activo' : ''}">Sangría de párrafo</button>
+        </div>
+      </div>
+      <div class="botones">
+        <button class="principal" id="a-cerrar">Listo</button>
+      </div>
+    `);
+    const guardar = () => { guardarJSON(CLAVE_AJUSTES, ajustes); aplicarAjustes(); };
+    document.getElementById('a-fuente').addEventListener('input', (e) => {
+      ajustes.fuente = Number(e.target.value);
+      document.getElementById('v-fuente').textContent = ajustes.fuente + 'px';
+      guardar();
+    });
+    document.getElementById('a-interlineado').addEventListener('input', (e) => {
+      ajustes.interlineado = Number(e.target.value);
+      document.getElementById('v-interlineado').textContent = ajustes.interlineado.toFixed(2);
+      guardar();
+    });
+    document.getElementById('a-ancho').addEventListener('input', (e) => {
+      ajustes.ancho = Number(e.target.value);
+      document.getElementById('v-ancho').textContent = ajustes.ancho + ' rem';
+      guardar();
+    });
+    document.querySelectorAll('#a-tema button').forEach((boton) => {
+      boton.addEventListener('click', () => {
+        ajustes.tema = boton.dataset.tema;
+        document.querySelectorAll('#a-tema button').forEach((b) => b.classList.toggle('activo', b === boton));
+        guardar();
+      });
+    });
+    document.querySelectorAll('#a-fuente-tipo button').forEach((boton) => {
+      boton.addEventListener('click', () => {
+        ajustes.serif = boton.dataset.serif === '1';
+        document.querySelectorAll('#a-fuente-tipo button').forEach((b) => b.classList.toggle('activo', b === boton));
+        guardar();
+      });
+    });
+    document.getElementById('a-justificado').addEventListener('click', (e) => {
+      ajustes.justificado = !ajustes.justificado;
+      e.currentTarget.classList.toggle('activo', ajustes.justificado);
+      guardar();
+    });
+    document.getElementById('a-raya').addEventListener('click', (e) => {
+      ajustes.raya = !ajustes.raya;
+      e.currentTarget.classList.toggle('activo', ajustes.raya);
+      guardar();
+    });
+    document.getElementById('a-cerrar').addEventListener('click', cerrarModal);
+  }
+
+  // -------------------------------------------------------------- navegación
+  btnAtras.addEventListener('click', () => {
+    const ruta = rutaActual();
+    if (ruta.vista === 'lector') { ir('#/n/' + ruta.novelaId); return; }
+    if (ruta.vista === 'novela') { ir('#/'); return; }
+    history.back();
+  });
+
+  btnAjustes.addEventListener('click', dialogoAjustes);
+
+  document.getElementById('ant').addEventListener('click', () => {
+    const ruta = rutaActual();
+    if (ruta.vista !== 'lector') { return; }
+    const indice = estado.capitulos.findIndex((c) => c.id === ruta.capituloId);
+    if (indice > 0) { ir('#/n/' + ruta.novelaId + '/c/' + estado.capitulos[indice - 1].id); }
+  });
+  document.getElementById('sig').addEventListener('click', () => {
+    const ruta = rutaActual();
+    if (ruta.vista !== 'lector') { return; }
+    const indice = estado.capitulos.findIndex((c) => c.id === ruta.capituloId);
+    if (indice >= 0 && indice < estado.capitulos.length - 1) {
+      ir('#/n/' + ruta.novelaId + '/c/' + estado.capitulos[indice + 1].id);
+    }
+  });
+  document.getElementById('indice').addEventListener('click', () => {
+    const ruta = rutaActual();
+    if (ruta.vista === 'lector') { ir('#/n/' + ruta.novelaId); }
+  });
+
+  // Al entrar en el lector se quita el scroll de la pantalla anterior.
+  window.addEventListener('hashchange', () => {
+    if (rutaActual().vista !== 'lector') { window.onscroll = null; }
+  });
+
+  aplicarAjustes();
+  render();
+})();
+</script>
+</body>
+</html>
