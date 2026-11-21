@@ -1609,8 +1609,8 @@
       messagingSenderId: "992048920246",
       appId: "1:992048920246:web:0b593d969769c158c4d817"
     };
-    firebase.initializeApp(firebaseConfig);
-    fbDb = firebase.firestore();
+    const app = window.firebase.initializeApp(firebaseConfig);
+    fbDb = window.firebase.firestore();
     firebaseListo = true;
   } catch (e) {
     firebaseError = e.message || String(e);
