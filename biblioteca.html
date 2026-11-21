@@ -528,7 +528,7 @@
 
   async function render() {
     actualizarEstadoFirebase();
-    sincronizarDesdeFirebase().catch(() => {});
+    await sincronizarDesdeFirebase();
     const ruta = rutaActual();
     cerrarModal();
     btnEditarCap.hidden = true;
