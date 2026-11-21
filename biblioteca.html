@@ -163,6 +163,8 @@
   .fila .titulo { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .fila .marca { font-size: 12px; color: var(--tenue); }
   .fila.leido .titulo { color: var(--tenue); }
+  .fila.leido { opacity: .6; background: color-mix(in srgb, #1a7f37 10%, transparent); }
+  .fila.leido .marca { color: #1a7f37; font-weight: 600; }
   .borrar-cap {
     flex: 0 0 auto;
     min-width: 36px;
@@ -632,18 +634,14 @@
         + '<p class="meta">El título se rellena solo si el texto empieza por «第12章 …» o «Capítulo 12».</p></div>';
     } else {
       const orden = estado.orden;
-    const ultima = novela.ultimoCapId ? capitulos.find((c) => c.id === novela.ultimoCapId) : null;
-      const siguiente = ultima ? capitulos[Math.min(capitulos.indexOf(ultima) + 1, capitulos.length - 1)] : null;
-      const etiqueta = ultima
-        ? (siguiente && siguiente.id !== ultima.id ? 'Continuar' : 'Repasar')
-        : 'Comenzar';
-      const destino = ultima
-        ? (siguiente && siguiente.id !== ultima.id ? siguiente : ultima)
-        : capitulos[0];
+      // Continuar va al ÚLTIMO capítulo leído (donde se quedó). Si ninguno está leído, va al primero.
+      const leidos = capitulos.filter((c) => c.leido);
+      const ultimoLeido = leidos.length ? leidos[leidos.length - 1] : null;
+      const destino = ultimoLeido || capitulos[0];
       const siguienteTitulo = destino.titulo || destino.num;
 
       html += '<div class="botones"><button class="principal" id="b-seguir-novela">'
-        + etiqueta + ': ' + escapar(recortar(siguienteTitulo || 'capítulo', 46))
+        + 'Continuar: ' + escapar(recortar(siguienteTitulo || 'capítulo', 46))
         + '</button></div>';
 
       const vistaLista = orden === 'desc' ? capitulos.slice().reverse() : capitulos;
