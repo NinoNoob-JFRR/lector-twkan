@@ -79,6 +79,7 @@
     align-items: center;
     gap: 10px;
     padding: 10px max(12px, env(safe-area-inset-left)) 10px max(12px, env(safe-area-inset-right));
+    background: var(--fondo);
     background: color-mix(in srgb, var(--fondo) 88%, transparent);
     backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--linea);
@@ -185,6 +186,7 @@
     display: flex;
     gap: 8px;
     padding: 10px max(10px, env(safe-area-inset-left)) calc(10px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-right));
+    background: var(--fondo);
     background: color-mix(in srgb, var(--fondo) 92%, transparent);
     backdrop-filter: blur(8px);
     border-top: 1px solid var(--linea);
@@ -258,6 +260,7 @@
   <button id="btn-atras" class="icono" title="Atrás" hidden>←</button>
   <div id="barra-titulo">Mi biblioteca</div>
   <button id="btn-ajustes" class="icono" title="Ajustes de lectura">Aa</button>
+  <button id="btn-editar-cap" class="icono" title="Editar capítulo" hidden>✎</button>
 </header>
 
 <div id="progreso" hidden><div id="progreso-relleno"></div></div>
@@ -388,6 +391,7 @@
   const barraTitulo = document.getElementById('barra-titulo');
   const btnAtras = document.getElementById('btn-atras');
   const btnAjustes = document.getElementById('btn-ajustes');
+  const btnEditarCap = document.getElementById('btn-editar-cap');
   const barraProgreso = document.getElementById('progreso');
   const rellenoProgreso = document.getElementById('progreso-relleno');
   const navLector = document.getElementById('nav-lector');
@@ -404,7 +408,8 @@
 
   function escapar(texto) {
     return String(texto == null ? '' : texto)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   function fecha(ms) {
@@ -442,6 +447,7 @@
     const ruta = rutaActual();
     cerrarModal();
     navLector.hidden = true;
+    btnEditarCap.hidden = true;
     barraProgreso.hidden = true;
     try {
       if (ruta.vista === 'lector') {
@@ -572,7 +578,7 @@
       boton.addEventListener('click', () => ir('#/n/' + novelaId + '/c/' + boton.dataset.cap));
     });
     document.getElementById('b-anadir').addEventListener('click', () => dialogoCapitulo(novelaId, null));
-    document.getElementById('b-cap-txt').addEventListener('click', dialogoImportarCapitulos(novelaId));
+    document.getElementById('b-cap-txt').addEventListener('click', () => dialogoImportarCapitulos(novelaId));
     document.getElementById('b-exportar').addEventListener('click', () => exportarNovela(novelaId));
     document.getElementById('b-editar').addEventListener('click', () => dialogoEditarNovela(novela));
   }
@@ -591,6 +597,7 @@
     barraTitulo.textContent = capitulo.titulo || novela.titulo;
     btnAtras.hidden = false;
     navLector.hidden = false;
+    btnEditarCap.hidden = false;
     barraProgreso.hidden = false;
     document.getElementById('ant').disabled = indice <= 0;
     document.getElementById('sig').disabled = indice < 0 || indice >= capitulos.length - 1;
@@ -1177,6 +1184,12 @@
   });
 
   btnAjustes.addEventListener('click', dialogoAjustes);
+
+  btnEditarCap.addEventListener('click', () => {
+    if (estado.novela && estado.capitulo) {
+      dialogoCapitulo(estado.novela.id, estado.capitulo);
+    }
+  });
 
   document.getElementById('ant').addEventListener('click', () => {
     const ruta = rutaActual();
