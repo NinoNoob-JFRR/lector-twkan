@@ -591,15 +591,19 @@
 
     vista.querySelector('.contenedor').innerHTML = html;
 
-    vista.querySelectorAll('[data-novela]').forEach((boton) => {
-      boton.addEventListener('click', () => ir('#/n/' + boton.dataset.novela));
-    });
-    document.getElementById('b-nueva').addEventListener('click', dialogoNuevaNovela);
-    document.getElementById('b-importar').addEventListener('click', dialogoImportarNovelas);
-    document.getElementById('b-copia').addEventListener('click', dialogoCopia);
-    const seguir = document.getElementById('b-seguir');
-    if (seguir) {
-      seguir.addEventListener('click', () => ir('#/n/' + ultimo.novelaId + '/c/' + ultimo.capituloId));
+    try {
+      vista.querySelectorAll('[data-novela]').forEach((boton) => {
+        boton.addEventListener('click', () => ir('#/n/' + boton.dataset.novela));
+      });
+      document.getElementById('b-nueva').addEventListener('click', dialogoNuevaNovela);
+      document.getElementById('b-importar').addEventListener('click', dialogoImportarNovelas);
+      document.getElementById('b-copia').addEventListener('click', dialogoCopia);
+      const seguir = document.getElementById('b-seguir');
+      if (seguir) {
+        seguir.addEventListener('click', () => ir('#/n/' + ultimo.novelaId + '/c/' + ultimo.capituloId));
+      }
+    } catch (e) {
+      console.error('Error asignando eventos de biblioteca:', e);
     }
   }
 
@@ -677,30 +681,36 @@
         borrarCapitulo(novelaId, boton.dataset.cap);
       });
     });
-    document.getElementById('b-anadir').addEventListener('click', () => dialogoCapitulo(novelaId, null));
-    document.getElementById('b-cap-txt').addEventListener('click', () => dialogoImportarCapitulos(novelaId));
-    document.getElementById('b-exportar').addEventListener('click', () => exportarNovela(novelaId));
-    document.getElementById('b-editar').addEventListener('click', () => dialogoEditarNovela(novela));
-    document.getElementById('b-orden').addEventListener('click', async () => {
-      const actual = await dbVer('novelas', novelaId);
-      const nueva = actual && actual.orden === 'desc' ? 'asc' : 'desc';
-      if (actual) { await dbPoner('novelas', Object.assign({}, actual, { orden: nueva })); }
-      estado.orden = nueva;
-      pintarNovela(novelaId);
-    });
-    const btnSeguirNovela = document.getElementById('b-seguir-novela');
-    if (btnSeguirNovela) {
-      btnSeguirNovela.addEventListener('click', () => {
-        ir('#/n/' + novelaId + '/c/' + destino.id);
+    // Asignar eventos de forma segura: si un botón no existe (por ejemplo, en
+    // novela sin capítulos), no se rompe la aplicación.
+    try {
+      document.getElementById('b-anadir').addEventListener('click', () => dialogoCapitulo(novelaId, null));
+      document.getElementById('b-cap-txt').addEventListener('click', () => dialogoImportarCapitulos(novelaId));
+      document.getElementById('b-exportar').addEventListener('click', () => exportarNovela(novelaId));
+      document.getElementById('b-editar').addEventListener('click', () => dialogoEditarNovela(novela));
+      document.getElementById('b-orden').addEventListener('click', async () => {
+        const actual = await dbVer('novelas', novelaId);
+        const nueva = actual && actual.orden === 'desc' ? 'asc' : 'desc';
+        if (actual) { await dbPoner('novelas', Object.assign({}, actual, { orden: nueva })); }
+        estado.orden = nueva;
+        pintarNovela(novelaId);
       });
-    }
-    const btnOrdenNumeros = document.getElementById('b-orden-numeros');
-    if (btnOrdenNumeros) {
-      btnOrdenNumeros.addEventListener('click', () => renumerar(novelaId));
-    }
-    const btnReordenar = document.getElementById('b-reordenar');
-    if (btnReordenar) {
-      btnReordenar.addEventListener('click', () => reordenarCapitulos(novelaId));
+      const btnSeguirNovela = document.getElementById('b-seguir-novela');
+      if (btnSeguirNovela) {
+        btnSeguirNovela.addEventListener('click', () => {
+          ir('#/n/' + novelaId + '/c/' + destino.id);
+        });
+      }
+      const btnOrdenNumeros = document.getElementById('b-orden-numeros');
+      if (btnOrdenNumeros) {
+        btnOrdenNumeros.addEventListener('click', () => renumerar(novelaId));
+      }
+      const btnReordenar = document.getElementById('b-reordenar');
+      if (btnReordenar) {
+        btnReordenar.addEventListener('click', () => reordenarCapitulos(novelaId));
+      }
+    } catch (e) {
+      console.error('Error asignando eventos de novela:', e);
     }
   }
 
