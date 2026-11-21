@@ -372,7 +372,7 @@
 
   async function sincronizarDesdeFirebase() {
     if (!firebaseListo) return;
-    estadoFirebase.classList.add('sincronizando');
+    estadoFirebaseElTemp.classList.add('sincronizando');
     try {
       const novelasFb = await fbCargarnovelas();
       const capitulosFb = await fbCargarCapitulos();
@@ -393,8 +393,8 @@
       }
       if (nuevas > 0) { aviso(nuevas + ' elemento' + (nuevas === 1 ? '' : 's') + ' sincronizado' + (nuevas === 1 ? '' : 's') + ' desde la nube'); }
     } catch (e) { console.warn('Sync Firebase:', e); }
-    estadoFirebase.classList.remove('sincronizando');
-    actualizarEstadoFirebase();
+    estadoFirebaseEl.classList.remove('sincronizando');
+    actualizarestadoFirebaseEl();
   }
 
   // Sube TODO lo que tengas local a Firebase (novelas y capÃ­tulos).
@@ -420,17 +420,17 @@
     }
   }
 
-  function actualizarEstadoFirebase() {
-    if (!estadoFirebase) { return; }
-    estadoFirebase.hidden = false;
+  function actualizarestadoFirebaseEl() {
+    if (!estadoFirebaseEl) { return; }
+    estadoFirebaseEl.hidden = false;
     if (!firebaseListo) {
-      estadoFirebase.textContent = 'â˜';
-      estadoFirebase.className = 'desconectado';
-      estadoFirebase.title = 'Sin conexiÃ³n a la nube: ' + (firebaseError || 'error desconocido');
+      estadoFirebaseEl.textContent = 'â˜';
+      estadoFirebaseEl.className = 'desconectado';
+      estadoFirebaseEl.title = 'Sin conexiÃ³n a la nube: ' + (firebaseError || 'error desconocido');
     } else {
-      estadoFirebase.textContent = 'â˜';
-      estadoFirebase.className = 'conectado';
-      estadoFirebase.title = 'Conectado a Firebase (nube)';
+      estadoFirebaseEl.textContent = 'â˜';
+      estadoFirebaseEl.className = 'conectado';
+      estadoFirebaseEl.title = 'Conectado a Firebase (nube)';
     }
   }
 
@@ -600,7 +600,7 @@
   const btnAtras = document.getElementById('btn-atras');
   const btnAjustes = document.getElementById('btn-ajustes');
   const btneditarCap = document.getElementById('btn-editar-cap');
-  const estadoFirebase = document.getElementById('estado-firebase');
+  const estadoFirebaseEl = document.getElementById('estado-firebase');
   const barraProgreso = document.getElementById('progreso');
   const rellenoProgreso = document.getElementById('progreso-relleno');
   const navLector = document.getElementById('nav-lector');
@@ -654,7 +654,7 @@
   // ---------------------------------------------------------------- dibujar
   async function render() {
     // Actualizar indicador de estado de Firebase
-    actualizarEstadoFirebase();
+    actualizarestadoFirebaseEl();
     // sincronizar con Firebase en segundo plano, sin bloquear la carga
     sincronizarDesdeFirebase().catch(() => {});
     const ruta = rutaActual();
@@ -763,7 +763,7 @@
           btnsubirnube.classList.add('sincronizando');
           await subirTodoAFirebase();
           btnsubirnube.classList.remove('sincronizando');
-          actualizarEstadoFirebase();
+          actualizarestadoFirebaseEl();
           aviso('subido a la nube');
         });
       }
@@ -1776,6 +1776,7 @@
 </script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>`n<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>`n</body>
 </html>
+
 
 
 
