@@ -310,7 +310,7 @@
   <div id="barra-titulo">Mi biblioteca</div>
   <div id="estado-firebase" class="icono" title="Estado de la nube" hidden>â˜</div>
   <button id="btn-ajustes" class="icono" title="Ajustes de lectura">Aa</button>
-  <button id="btn-editar-cap" class="icono" title="Editar capÃ­tulo" hidden>âœŽ</button>
+  <button id="btn-editar-cap" class="icono" title="editar capÃ­tulo" hidden>âœŽ</button>
 </header>
 
 <div id="progreso" hidden><div id="progreso-relleno"></div></div>
@@ -347,7 +347,7 @@
     firebaseError = e.message || String(e);
   }
 
-  async function fbGuardarNovela(novela) {
+  async function fbGuardarnovela(novela) {
     if (!firebaseListo) return;
     try { await fbDb.collection('novelas').doc(novela.id).set(novela); } catch (e) { console.warn('Firebase novela:', e); }
   }
@@ -355,7 +355,7 @@
     if (!firebaseListo) return;
     try { await fbDb.collection('capitulos').doc(capitulo.id).set(capitulo); } catch (e) { console.warn('Firebase capÃ­tulo:', e); }
   }
-  async function fbCargarNovelas() {
+  async function fbCargarnovelas() {
     if (!firebaseListo) return [];
     try {
       const snap = await fbDb.collection('novelas').get();
@@ -374,7 +374,7 @@
     if (!firebaseListo) return;
     estadoFirebase.classList.add('sincronizando');
     try {
-      const novelasFb = await fbCargarNovelas();
+      const novelasFb = await fbCargarnovelas();
       const capitulosFb = await fbCargarCapitulos();
       let nuevas = 0;
       for (const n of novelasFb) {
@@ -406,7 +406,7 @@
       const capitulos = await dbTodo('capitulos');
       let subidas = 0;
       for (const n of novelas) {
-        await fbGuardarNovela(n);
+        await fbGuardarnovela(n);
         subidas += 1;
       }
       for (const c of capitulos) {
@@ -415,7 +415,7 @@
       }
       aviso(subidas + ' elemento' + (subidas === 1 ? '' : 's') + ' subido' + (subidas === 1 ? '' : 's') + ' a la nube');
     } catch (e) {
-      console.warn('Subir a Firebase:', e);
+      console.warn('subir a Firebase:', e);
       aviso('Error subiendo a la nube');
     }
   }
@@ -479,7 +479,7 @@
   }
 
   // --------------------------------------------------------------- IndexedDB
-  const DB_NOMBRE = 'bibliotecaNovelas';
+  const DB_NOMBRE = 'bibliotecanovelas';
   const DB_VERSION = 1;
   let dbPromesa = null;
 
@@ -531,7 +531,7 @@
   const dbPoner = async (almacen, valor) => {
     const resultado = tx(almacen, 'readwrite', (o) => o.put(valor));
     // Firebase no bloquea la escritura local: se dispara y se olvida
-    if (almacen === 'novelas') { fbGuardarNovela(valor).catch(e => console.warn('Firebase novela:', e)); }
+    if (almacen === 'novelas') { fbGuardarnovela(valor).catch(e => console.warn('Firebase novela:', e)); }
     if (almacen === 'capitulos') { fbGuardarCapitulo(valor).catch(e => console.warn('Firebase capÃ­tulo:', e)); }
     return resultado;
   };
@@ -599,7 +599,7 @@
   const barraTitulo = document.getElementById('barra-titulo');
   const btnAtras = document.getElementById('btn-atras');
   const btnAjustes = document.getElementById('btn-ajustes');
-  const btnEditarCap = document.getElementById('btn-editar-cap');
+  const btneditarCap = document.getElementById('btn-editar-cap');
   const estadoFirebase = document.getElementById('estado-firebase');
   const barraProgreso = document.getElementById('progreso');
   const rellenoProgreso = document.getElementById('progreso-relleno');
@@ -655,19 +655,19 @@
   async function render() {
     // Actualizar indicador de estado de Firebase
     actualizarEstadoFirebase();
-    // Sincronizar con Firebase en segundo plano, sin bloquear la carga
+    // sincronizar con Firebase en segundo plano, sin bloquear la carga
     sincronizarDesdeFirebase().catch(() => {});
     const ruta = rutaActual();
     cerrarModal();
     navLector.hidden = true;
-    btnEditarCap.hidden = true;
+    btneditarCap.hidden = true;
     barraProgreso.hidden = true;
     vista.querySelector('.contenedor').className = 'contenedor';
     try {
       if (ruta.vista === 'lector') {
         await pintarLector(ruta.novelaId, ruta.capituloId);
       } else if (ruta.vista === 'novela') {
-        await pintarNovela(ruta.novelaId);
+        await pintarnovela(ruta.novelaId);
       } else {
         await pintarBiblioteca();
       }
@@ -688,26 +688,26 @@
     const novelas = (await dbTodo('novelas')).sort((a, b) => (b.actualizado || 0) - (a.actualizado || 0));
     estado.novelas = novelas;
     const capitulos = await dbTodo('capitulos');
-    const porNovela = new Map();
+    const pornovela = new Map();
     for (const c of capitulos) {
-      porNovela.set(c.novelaId, (porNovela.get(c.novelaId) || 0) + 1);
+      pornovela.set(c.novelaId, (pornovela.get(c.novelaId) || 0) + 1);
     }
     const ultimo = await dbVer('meta', 'ultimo');
     const ultimoCap = ultimo && ultimo.capituloId ? capitulos.find((c) => c.id === ultimo.capituloId) : null;
 
-    // Buscar el mejor candidato para "Continuar": Ãºltimo capÃ­tulo leÃ­do,
+    // Buscar el mejor candidato para "continuar": Ãºltimo capÃ­tulo leÃ­do,
     // si no hay ninguno leÃ­do, el capÃ­tulo mÃ¡s recientemente actualizado.
     let seguirCap = null;
-    let seguirNovela = null;
+    let seguirnovela = null;
     const leidos = capitulos.filter((c) => c.leido);
     if (leidos.length) {
       const ultimoLeido = leidos[leidos.length - 1];
       seguirCap = ultimoLeido;
-      seguirNovela = novelas.find((n) => n.id === ultimoLeido.novelaId);
+      seguirnovela = novelas.find((n) => n.id === ultimoLeido.novelaId);
     } else if (capitulos.length) {
       const masReciente = capitulos.reduce((a, b) => (b.actualizado || 0) > (a.actualizado || 0) ? b : a);
       seguirCap = masReciente;
-      seguirNovela = novelas.find((n) => n.id === masReciente.novelaId);
+      seguirnovela = novelas.find((n) => n.id === masReciente.novelaId);
     }
 
     let html = '<div class="contenedor">';
@@ -717,16 +717,16 @@
 
     html += '<div class="botones">';
     html += '<button class="principal" id="b-nueva">Nueva novela</button>';
-    html += '<button id="b-importar">Importar .txt</button>';
+    html += '<button id="b-importar">importar .txt</button>';
     html += '<button id="b-copia">Copia de seguridad</button>';
     if (firebaseListo) {
-      html += '<button id="b-subir-nube">Subir a la nube</button>';
-      html += '<button id="b-sincronizar">Sincronizar desde la nube</button>';
+      html += '<button id="b-subir-nube">subir a la nube</button>';
+      html += '<button id="b-sincronizar">sincronizar desde la nube</button>';
     }
     html += '</div>';
 
-    if (seguirCap && seguirNovela) {
-      html += '<div class="botones"><button id="b-seguir">Continuar: '
+    if (seguirCap && seguirnovela) {
+      html += '<div class="botones"><button id="b-seguir">continuar: '
         + escapar(recortar(seguirCap.titulo || 'capÃ­tulo', 42)) + '</button></div>';
     }
 
@@ -734,14 +734,14 @@
       html += '<div class="vacio"><h2>Empieza aquÃ­</h2>'
         + '<p>Crea una novela, pega dentro los capÃ­tulos que traduzcas con Gemini y se guardarÃ¡n en este navegador.</p>'
         + '<p>TambiÃ©n puedes importar un <strong>.txt</strong> o restaurar una copia de seguridad.</p>'
-        + '<p class="meta">Los capÃ­tulos tambiÃ©n se pueden descargar como .txt para tenerlos en el PC.</p></div>';
+        + '<p class="meta">Los capÃ­tulos tambiÃ©n se pueden Descargar como .txt para tenerlos en el PC.</p></div>';
     } else {
       html += '<div class="tarjetas">';
       for (const n of novelas) {
         html += '<button class="tarjeta" data-novela="' + n.id + '">'
           + '<strong>' + escapar(n.titulo) + '</strong>'
           + '<span>' + escapar(n.autor || 'Sin autor') + '</span>'
-          + '<span>' + (porNovela.get(n.id) || 0) + ' capÃ­tulos Â· ' + fecha(n.actualizado || n.creado) + '</span>'
+          + '<span>' + (pornovela.get(n.id) || 0) + ' capÃ­tulos Â· ' + fecha(n.actualizado || n.creado) + '</span>'
           + '</button>';
       }
       html += '</div>';
@@ -754,33 +754,33 @@
       vista.querySelectorAll('[data-novela]').forEach((boton) => {
         boton.addEventListener('click', () => ir('#/n/' + boton.dataset.novela));
       });
-      document.getElementById('b-nueva').addEventListener('click', dialogoNuevaNovela);
-      document.getElementById('b-importar').addEventListener('click', dialogoImportarNovelas);
+      document.getElementById('b-nueva').addEventListener('click', dialogoNuevanovela);
+      document.getElementById('b-importar').addEventListener('click', dialogoimportarnovelas);
       document.getElementById('b-copia').addEventListener('click', dialogoCopia);
-      const btnSubirNube = document.getElementById('b-subir-nube');
-      if (btnSubirNube) {
-        btnSubirNube.addEventListener('click', async () => {
-          btnSubirNube.classList.add('sincronizando');
+      const btnsubirnube = document.getElementById('b-subir-nube');
+      if (btnsubirnube) {
+        btnsubirnube.addEventListener('click', async () => {
+          btnsubirnube.classList.add('sincronizando');
           await subirTodoAFirebase();
-          btnSubirNube.classList.remove('sincronizando');
+          btnsubirnube.classList.remove('sincronizando');
           actualizarEstadoFirebase();
-          aviso('Subido a la nube');
+          aviso('subido a la nube');
         });
       }
-      const btnSincronizar = document.getElementById('b-sincronizar');
-      if (btnSincronizar) {
-        btnSincronizar.addEventListener('click', async () => {
-          btnSincronizar.classList.add('sincronizando');
+      const btnsincronizar = document.getElementById('b-sincronizar');
+      if (btnsincronizar) {
+        btnsincronizar.addEventListener('click', async () => {
+          btnsincronizar.classList.add('sincronizando');
           await sincronizarDesdeFirebase();
-          btnSincronizar.classList.remove('sincronizando');
+          btnsincronizar.classList.remove('sincronizando');
           render();
         });
       }
       const seguir = document.getElementById('b-seguir');
       if (seguir) {
         seguir.addEventListener('click', () => {
-          if (seguirNovela && seguirCap) {
-            ir('#/n/' + seguirNovela.id + '/c/' + seguirCap.id);
+          if (seguirnovela && seguirCap) {
+            ir('#/n/' + seguirnovela.id + '/c/' + seguirCap.id);
           }
         });
       }
@@ -789,7 +789,7 @@
     }
   }
 
-  async function pintarNovela(novelaId) {
+  async function pintarnovela(novelaId) {
     const novela = await dbVer('novelas', novelaId);
     if (!novela) { ir('#/'); return; }
     estado.novela = novela;
@@ -808,9 +808,9 @@
 
     html += '<div class="botones">';
     html += '<button class="principal" id="b-anadir">AÃ±adir capÃ­tulo</button>';
-    html += '<button id="b-cap-txt">Importar capÃ­tulos .txt</button>';
-    html += '<button id="b-exportar">Exportar novela .txt</button>';
-    html += '<button id="b-editar">Editar</button>';
+    html += '<button id="b-cap-txt">importar capÃ­tulos .txt</button>';
+    html += '<button id="b-exportar">exportar novela .txt</button>';
+    html += '<button id="b-editar">editar</button>';
     html += '<button id="b-orden">Orden: ' + (estado.orden === 'asc' ? '1 â†’ Ãºltimo' : 'Ãºltimo â†’ 1') + '</button>';
     html += '</div>';
 
@@ -820,14 +820,14 @@
         + '<p class="meta">El tÃ­tulo se rellena solo si el texto empieza por Â«ç¬¬12ç«  â€¦Â» o Â«CapÃ­tulo 12Â».</p></div>';
     } else {
       const orden = estado.orden;
-      // Continuar va al ÃšLTIMO capÃ­tulo leÃ­do (donde se quedÃ³). Si ninguno estÃ¡ leÃ­do, va al primero.
+      // continuar va al ÃšLTIMO capÃ­tulo leÃ­do (donde se quedÃ³). Si ninguno estÃ¡ leÃ­do, va al primero.
       const leidos = capitulos.filter((c) => c.leido);
       const ultimoLeido = leidos.length ? leidos[leidos.length - 1] : null;
       const destino = ultimoLeido || capitulos[0];
       const siguienteTitulo = destino.titulo || destino.num;
 
       html += '<div class="botones"><button class="principal" id="b-seguir-novela">'
-        + 'Continuar: ' + escapar(recortar(siguienteTitulo || 'capÃ­tulo', 46))
+        + 'continuar: ' + escapar(recortar(siguienteTitulo || 'capÃ­tulo', 46))
         + '</button></div>';
 
       const vistaLista = orden === 'desc' ? capitulos.slice().reverse() : capitulos;
@@ -845,9 +845,9 @@
       html += '</div>';
       html += '<div class="botones">'
         + '<button class="orden" id="b-orden-numeros" title="Guarda el nÃºmero que aparece en cada tÃ­tulo para que la lista quede en orden">'
-        + 'Ordenar por el nÃºmero del tÃ­tulo</button>'
+        + 'ordenar por el nÃºmero del tÃ­tulo</button>'
         + '<button class="orden" id="b-reordenar" title="Les asigna nÃºmeros correlativos 1, 2, 3â€¦ segÃºn el orden en que aparecen">'
-        + 'Reordenar capÃ­tulos</button>'
+        + 'reordenar capÃ­tulos</button>'
         + '</div>';
     }
     html += '</div>';
@@ -867,19 +867,19 @@
     // novela sin capÃ­tulos), no se rompe la aplicaciÃ³n.
     try {
       document.getElementById('b-anadir').addEventListener('click', () => dialogoCapitulo(novelaId, null));
-      document.getElementById('b-cap-txt').addEventListener('click', () => dialogoImportarCapitulos(novelaId));
-      document.getElementById('b-exportar').addEventListener('click', () => exportarNovela(novelaId));
-      document.getElementById('b-editar').addEventListener('click', () => dialogoEditarNovela(novela));
+      document.getElementById('b-cap-txt').addEventListener('click', () => dialogoimportarCapitulos(novelaId));
+      document.getElementById('b-exportar').addEventListener('click', () => exportarnovela(novelaId));
+      document.getElementById('b-editar').addEventListener('click', () => dialogoeditarnovela(novela));
       document.getElementById('b-orden').addEventListener('click', async () => {
         const actual = await dbVer('novelas', novelaId);
         const nueva = actual && actual.orden === 'desc' ? 'asc' : 'desc';
         if (actual) { await dbPoner('novelas', Object.assign({}, actual, { orden: nueva })); }
         estado.orden = nueva;
-        pintarNovela(novelaId);
+        pintarnovela(novelaId);
       });
-      const btnSeguirNovela = document.getElementById('b-seguir-novela');
-      if (btnSeguirNovela) {
-        btnSeguirNovela.addEventListener('click', () => {
+      const btnSeguirnovela = document.getElementById('b-seguir-novela');
+      if (btnSeguirnovela) {
+        btnSeguirnovela.addEventListener('click', () => {
           ir('#/n/' + novelaId + '/c/' + destino.id);
         });
       }
@@ -887,9 +887,9 @@
       if (btnOrdenNumeros) {
         btnOrdenNumeros.addEventListener('click', () => renumerar(novelaId));
       }
-      const btnReordenar = document.getElementById('b-reordenar');
-      if (btnReordenar) {
-        btnReordenar.addEventListener('click', () => reordenarCapitulos(novelaId));
+      const btnreordenar = document.getElementById('b-reordenar');
+      if (btnreordenar) {
+        btnreordenar.addEventListener('click', () => reordenarCapitulos(novelaId));
       }
     } catch (e) {
       console.error('Error asignando eventos de novela:', e);
@@ -911,7 +911,7 @@
     barraTitulo.textContent = capitulo.titulo || novela.titulo;
     btnAtras.hidden = false;
     navLector.hidden = false;
-    btnEditarCap.hidden = false;
+    btneditarCap.hidden = false;
     barraProgreso.hidden = false;
     document.getElementById('ant').disabled = indice <= 0;
     document.getElementById('sig').disabled = indice < 0 || indice >= capitulos.length - 1;
@@ -961,7 +961,7 @@
         estado.capitulo = actualizado;
         await dbPoner('capitulos', actualizado);
         await dbPoner('meta', { k: 'ultimo', novelaId: novelaId, capituloId: actualizado.id, cuando: Date.now() });
-        // Cada novela recuerda su ultimo capÃ­tulo para su boton Continuar.
+        // Cada novela recuerda su ultimo capÃ­tulo para su boton continuar.
         const novela = await dbVer('novelas', novelaId);
         if (novela && novela.ultimoCapId !== actualizado.id) {
           await dbPoner('novelas', Object.assign({}, novela, {
@@ -1027,7 +1027,7 @@
     }
   });
 
-  function dialogoNuevaNovela() {
+  function dialogoNuevanovela() {
     abrirModal(`
       <h2>Nueva novela</h2>
       <p class="pista">Solo el tÃ­tulo es obligatorio. El autor es opcional.</p>
@@ -1059,9 +1059,9 @@
     entrada.addEventListener('keydown', (evento) => { if (evento.key === 'Enter') { crear(); } });
   }
 
-  function dialogoEditarNovela(novela) {
+  function dialogoeditarnovela(novela) {
     abrirModal(`
-      <h2>Editar novela</h2>
+      <h2>editar novela</h2>
       <div class="campo"><label for="e-titulo">TÃ­tulo</label><input id="e-titulo" value="${escapar(novela.titulo)}"></div>
       <div class="campo"><label for="e-autor">Autor</label><input id="e-autor" value="${escapar(novela.autor || '')}"></div>
       <hr class="separador">
@@ -1084,7 +1084,7 @@
       });
       await dbPoner('novelas', actualizada);
       cerrarModal();
-      aviso('Novela actualizada');
+      aviso('novela actualizada');
       render();
     });
     document.getElementById('e-borrar').addEventListener('click', async () => {
@@ -1095,7 +1095,7 @@
       await olvidarUltimo(novela.id, null);
       cerrarModal();
       ir('#/');
-      aviso('Novela borrada');
+      aviso('novela borrada');
     });
   }
 
@@ -1173,7 +1173,7 @@
     if (!capitulo) { return; }
     if (!confirm('Â¿Borrar el capÃ­tulo "' + escapar(capitulo.titulo || 'Sin tÃ­tulo') + '"? No se puede deshacer.')) { return; }
     await dbBorrar('capitulos', capituloId);
-    await tocarNovela(novelaId);
+    await tocarnovela(novelaId);
     await olvidarUltimo(null, capituloId);
     cerrarModal();
     if (estado.capitulo && estado.capitulo.id === capituloId) {
@@ -1186,13 +1186,13 @@
 
   function dialogoCapitulo(novelaId, capitulo) {
     abrirModal(`
-      <h2>${capitulo ? 'Editar capÃ­tulo' : 'AÃ±adir capÃ­tulo'}</h2>
+      <h2>${capitulo ? 'editar capÃ­tulo' : 'AÃ±adir capÃ­tulo'}</h2>
       <p class="pista">Pega el texto tal como te lo dÃ© Gemini. Los pÃ¡rrafos se separan con una lÃ­nea en blanco.</p>
       <div class="fila-campos">
         <div class="campo" style="flex:0 1 110px"><label for="c-num">NÃºmero</label><input id="c-num" type="number" min="0" step="1" value="${capitulo ? capitulo.num : ''}" placeholder="auto"></div>
         <div class="campo"><label for="c-titulo">TÃ­tulo</label><input id="c-titulo" placeholder="se detecta del texto" value="${capitulo ? escapar(capitulo.titulo) : ''}"></div>
       </div>
-      <div class="campo"><label for="c-texto">Texto</label><textarea id="c-texto" placeholder="Pega aquÃ­ el capÃ­tulo traducidoâ€¦">${capitulo ? escapar(capitulo.texto) : ''}</textarea></div>
+      <div class="campo"><label for="c-texto">texto</label><textarea id="c-texto" placeholder="Pega aquÃ­ el capÃ­tulo traducidoâ€¦">${capitulo ? escapar(capitulo.texto) : ''}</textarea></div>
       <div class="botones">
         <button id="c-pegar">Pegar del portapapeles</button>
         <button class="principal" id="c-guardar">Guardar</button>
@@ -1245,17 +1245,17 @@
         return;
       }
       await dbPoner('capitulos', actual);
-      await tocarNovela(novelaId);
+      await tocarnovela(novelaId);
       cerrarModal();
       aviso(capitulo ? 'CapÃ­tulo actualizado' : 'CapÃ­tulo guardado');
       render();
     });
     if (capitulo) {
-      document.getElementById('c-bajar').addEventListener('click', () => descargarCapitulo(capitulo, estado.novela));
+      document.getElementById('c-bajar').addEventListener('click', () => DescargarCapitulo(capitulo, estado.novela));
       document.getElementById('c-borrar').addEventListener('click', async () => {
         if (!confirm('Â¿Borrar este capÃ­tulo?')) { return; }
         await dbBorrar('capitulos', capitulo.id);
-        await tocarNovela(novelaId);
+        await tocarnovela(novelaId);
         await olvidarUltimo(null, capitulo.id);
         cerrarModal();
         ir('#/n/' + novelaId);
@@ -1265,7 +1265,7 @@
     (capitulo ? texto : titulo).focus();
   }
 
-  async function tocarNovela(novelaId) {
+  async function tocarnovela(novelaId) {
     const novela = await dbVer('novelas', novelaId);
     if (novela) {
       novela.actualizado = Date.now();
@@ -1273,7 +1273,7 @@
     }
   }
 
-  // Si se borra lo que apuntaba "Continuar", la marca deja de tener sentido.
+  // Si se borra lo que apuntaba "continuar", la marca deja de tener sentido.
   async function olvidarUltimo(novelaId, capituloId) {
     const ultimo = await dbVer('meta', 'ultimo');
     if (!ultimo) { return; }
@@ -1284,9 +1284,9 @@
   }
 
   // ------------------------------------------------------------- importar txt
-  function dialogoImportarNovelas() {
+  function dialogoimportarnovelas() {
     abrirModal(`
-      <h2>Importar novelas</h2>
+      <h2>importar novelas</h2>
       <p class="pista">Cada archivo se convierte en una novela. Si el texto trae encabezados
         como Â«ç¬¬12ç«  â€¦Â» o Â«CapÃ­tulo 12Â», se separa en capÃ­tulos automÃ¡ticamente.</p>
       <div class="campo"><label for="i-archivos">Archivos .txt</label><input id="i-archivos" type="file" accept=".txt,text/plain" multiple></div>
@@ -1300,7 +1300,7 @@
         <button class="orden" id="i-guardar-opcion">Recordar esta opciÃ³n</button>
       </div>
       <div class="botones">
-        <button class="principal" id="i-importar">Importar</button>
+        <button class="principal" id="i-importar">importar</button>
         <button id="i-cancelar">Cancelar</button>
       </div>
     `);
@@ -1315,7 +1315,7 @@
       const archivos = Array.from(entrada.files || []);
       if (!archivos.length) { aviso('Elige al menos un archivo'); return; }
       const opcion = document.getElementById('i-dividir').value;
-      // Ordenar archivos: primero los que tienen nÃºmero en el nombre (ascendente),
+      // ordenar archivos: primero los que tienen nÃºmero en el nombre (ascendente),
       // luego los que no tienen nÃºmero alfabÃ©ticamente.
       archivos.sort((a, b) => {
         const na = extraerNumeroDeNombre(a.name);
@@ -1326,7 +1326,7 @@
         return a.name.localeCompare(b.name);
       });
       const novelas = await dbTodo('novelas');
-      let nuevasNovelas = 0;
+      let nuevasnovelas = 0;
       let nuevosCaps = 0;
       const ahora = Date.now();
       let seg = 0;
@@ -1340,7 +1340,7 @@
         const repetida = novelas.find((n) => normalizar(n.titulo) === normalizar(nombre));
         const novela = repetida || { id: nuevoId(), titulo: nombre, autor: '', creado: ahora + seg, actualizado: ahora + seg };
         seg += 1000;
-        if (!repetida) { await dbPoner('novelas', novela); nuevasNovelas += 1; }
+        if (!repetida) { await dbPoner('novelas', novela); nuevasnovelas += 1; }
         const yaTiene = await capitulosDe(novela.id);
         let numero = siguienteNumero(yaTiene);
         for (const parte of partes) {
@@ -1374,16 +1374,16 @@
         }
       }
       cerrarModal();
-      aviso('Importadas ' + nuevasNovelas + (nuevasNovelas === 1 ? ' novela' : ' novelas')
+      aviso('Importadas ' + nuevasnovelas + (nuevasnovelas === 1 ? ' novela' : ' novelas')
         + ' y ' + nuevosCaps + (nuevosCaps === 1 ? ' capÃ­tulo' : ' capÃ­tulos'));
       render();
     });
   }
 
-  async function dialogoImportarCapitulos(novelaId) {
+  async function dialogoimportarCapitulos(novelaId) {
     const hayCaps = await capitulosDe(novelaId);
     abrirModal(`
-      <h2>Importar capÃ­tulos</h2>
+      <h2>importar capÃ­tulos</h2>
       <p class="pista">Cada archivo serÃ¡ un capÃ­tulo de esta novela. Si un capÃ­tulo con el mismo texto
         ya existe, no se vuelve a meter. Los que ya tengas se ordenan por su nÃºmero.</p>
       <div class="campo"><label for="ic-archivos">Archivos .txt</label><input id="ic-archivos" type="file" accept=".txt,text/plain" multiple></div>
@@ -1397,7 +1397,7 @@
         <button class="orden" id="ic-guardar-opcion">Recordar esta opciÃ³n</button>
       </div>
       <div class="botones">
-        <button class="principal" id="ic-importar">Importar</button>
+        <button class="principal" id="ic-importar">importar</button>
         <button id="ic-cancelar">Cancelar</button>
       </div>
     `);
@@ -1411,7 +1411,7 @@
       const archivos = Array.from(document.getElementById('ic-archivos').files || []);
       if (!archivos.length) { aviso('Elige al menos un archivo'); return; }
       const opcion = document.getElementById('ic-dividir').value;
-      // Ordenar archivos: primero los que tienen nÃºmero en el nombre (ascendente),
+      // ordenar archivos: primero los que tienen nÃºmero en el nombre (ascendente),
       // luego los que no tienen nÃºmero (notas del autor, etc.) alfabÃ©ticamente.
       archivos.sort((a, b) => {
         const na = extraerNumeroDeNombre(a.name);
@@ -1422,7 +1422,7 @@
         return a.name.localeCompare(b.name);
       });
       const existentes = await capitulosDe(novelaId);
-      const vistos = indiceDeTextos(existentes);
+      const vistos = indiceDetextos(existentes);
       let numero = siguienteNumero(existentes);
       let total = 0;
       let repetidos = 0;
@@ -1435,7 +1435,7 @@
           ? [{ titulo: '', texto: contenido }]
           : dividirEnCapitulos(contenido, opcion);
         for (const parte of partes) {
-          const clave = normalizarTexto(parte.texto);
+          const clave = normalizartexto(parte.texto);
           if (vistos.has(clave)) { repetidos += 1; continue; }
           vistos.set(clave, true);
           const titulo = parte.titulo || archivo.name.replace(/\.txt$/i, '');
@@ -1467,7 +1467,7 @@
           total += 1;
         }
       }
-      await tocarNovela(novelaId);
+      await tocarnovela(novelaId);
       cerrarModal();
       if (!total) {
         aviso('Ese capÃ­tulo ya estaba en la novela');
@@ -1488,16 +1488,16 @@
     });
   }
 
-  function normalizarTexto(texto) {
+  function normalizartexto(texto) {
     return String(texto || '').replace(/\s+/g, ' ').trim();
   }
 
   // Dos capitulos con el mismo texto son el mismo capitulo: si ya existe, no se
   // vuelve a meter. Esto es lo que hacia que se duplicaran al subir de nuevo.
-  function indiceDeTextos(capitulos) {
+  function indiceDetextos(capitulos) {
     const mapa = new Map();
     for (const c of capitulos) {
-      const clave = normalizarTexto(c.texto);
+      const clave = normalizartexto(c.texto);
       if (!mapa.has(clave)) { mapa.set(clave, c); }
     }
     return mapa;
@@ -1543,7 +1543,7 @@
   }
 
   // ------------------------------------------------------------------ exportar
-  function descargar(nombre, contenido) {
+  function Descargar(nombre, contenido) {
     const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const enlace = document.createElement('a');
@@ -1564,12 +1564,12 @@
     return titulo + '\n\n' + (capitulo.texto || '').trim() + '\n';
   }
 
-  function descargarCapitulo(capitulo, novela) {
+  function DescargarCapitulo(capitulo, novela) {
     const nombre = nombreSeguro((novela ? novela.titulo + ' - ' : '') + textoDeCapitulo(novela, capitulo).split('\n')[0]) + '.txt';
-    descargar(nombre, textoDeCapitulo(novela, capitulo));
+    Descargar(nombre, textoDeCapitulo(novela, capitulo));
   }
 
-  async function exportarNovela(novelaId) {
+  async function exportarnovela(novelaId) {
     const novela = await dbVer('novelas', novelaId);
     const capitulos = (await capitulosDe(novelaId)).sort(compararCapitulos);
     if (!novela || !capitulos.length) { aviso('No hay capÃ­tulos que exportar'); return; }
@@ -1578,8 +1578,8 @@
       texto += '\n\n=== CapÃ­tulo ' + (c.num || '') + ': ' + (c.titulo || '') + ' ===\n\n';
       texto += (c.texto || '').trim() + '\n';
     }
-    descargar(nombreSeguro(novela.titulo) + '.txt', texto);
-    aviso('Novela exportada');
+    Descargar(nombreSeguro(novela.titulo) + '.txt', texto);
+    aviso('novela exportada');
   }
 
   function dialogoCopia() {
@@ -1608,8 +1608,8 @@
         meta: await dbTodo('meta'),
         ajustes: ajustes
       };
-      descargar('biblioteca-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify(copia, null, 2));
-      aviso('Copia descargada');
+      Descargar('biblioteca-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify(copia, null, 2));
+      aviso('Copia Descargada');
     });
     document.getElementById('co-importar').addEventListener('click', async () => {
       const archivo = (document.getElementById('co-archivo').files || [])[0];
@@ -1674,7 +1674,7 @@
         </div>
       </div>
       <div class="ajuste">
-        <label>Texto</label>
+        <label>texto</label>
         <div class="opciones">
           <button id="a-justificado" class="${ajustes.justificado ? 'activo' : ''}">Justificado</button>
           <button id="a-raya" class="${ajustes.raya ? 'activo' : ''}">SangrÃ­a de pÃ¡rrafo</button>
@@ -1738,7 +1738,7 @@
 
     btnAjustes.addEventListener('click', dialogoAjustes);
 
-    btnEditarCap.addEventListener('click', () => {
+    btneditarCap.addEventListener('click', () => {
       if (estado.novela && estado.capitulo) {
         dialogoCapitulo(estado.novela.id, estado.capitulo);
       }
@@ -1776,4 +1776,6 @@
 </script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>`n<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>`n</body>
 </html>
+
+
 
