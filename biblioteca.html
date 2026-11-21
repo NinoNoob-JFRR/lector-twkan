@@ -688,11 +688,20 @@
       estado.orden = nueva;
       pintarNovela(novelaId);
     });
-    document.getElementById('b-seguir-novela').addEventListener('click', () => {
-      ir('#/n/' + novelaId + '/c/' + destino.id);
-    });
-    document.getElementById('b-orden-numeros').addEventListener('click', () => renumerar(novelaId));
-    document.getElementById('b-reordenar').addEventListener('click', () => reordenarCapitulos(novelaId));
+    const btnSeguirNovela = document.getElementById('b-seguir-novela');
+    if (btnSeguirNovela) {
+      btnSeguirNovela.addEventListener('click', () => {
+        ir('#/n/' + novelaId + '/c/' + destino.id);
+      });
+    }
+    const btnOrdenNumeros = document.getElementById('b-orden-numeros');
+    if (btnOrdenNumeros) {
+      btnOrdenNumeros.addEventListener('click', () => renumerar(novelaId));
+    }
+    const btnReordenar = document.getElementById('b-reordenar');
+    if (btnReordenar) {
+      btnReordenar.addEventListener('click', () => reordenarCapitulos(novelaId));
+    }
   }
 
   async function pintarLector(novelaId, capituloId) {
