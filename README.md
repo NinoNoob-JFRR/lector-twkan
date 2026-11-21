@@ -452,8 +452,9 @@ lectura.
 - **Nueva novela**: título y autor.
 - **Añadir capítulo**: pega el texto; si empieza por `第12章 …` o
   `Capítulo 12`, el título se detecta solo.
-- **Leer**: fuente con serifa, justificado, temas claro/sepia/oscuro, tamaño de
-  letra, interlineado, ancho y posición recordada por capítulo.
+- **Leer**: fuente con serifa, justificado, temas claro/blanco/sepia/oscuro,
+  tamaño de letra, interlineado, ancho del texto (de 20 a 100 rem) y posición
+  recordada por capítulo.
 - **Híbrido**: los capítulos se guardan en el navegador (IndexedDB) y además se
   pueden descargar como `.txt`, exportar la novela entera o hacer una copia
   `.json` para pasarla al móvil.
