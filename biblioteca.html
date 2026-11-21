@@ -268,6 +268,13 @@
   }
   .dividir select { width: auto; min-width: 150px; }
 
+  /* Estado de Firebase en la barra */
+  #estado-firebase { font-size: 17px; line-height: 1; padding: 8px 10px; }
+  #estado-firebase.conectado { color: #1a7f37; }
+  #estado-firebase.desconectado { color: #b42318; }
+  #estado-firebase.sincronizando { color: #1f6feb; animation: pulso 1.5s infinite; }
+  @keyframes pulso { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+
   #aviso {
     position: fixed;
     left: 50%;
@@ -303,6 +310,7 @@
 <header id="barra">
   <button id="btn-atras" class="icono" title="Atrás" hidden>←</button>
   <div id="barra-titulo">Mi biblioteca</div>
+  <div id="estado-firebase" class="icono" title="Estado de la nube" hidden>☁</div>
   <button id="btn-ajustes" class="icono" title="Ajustes de lectura">Aa</button>
   <button id="btn-editar-cap" class="icono" title="Editar capítulo" hidden>✎</button>
 </header>
@@ -324,6 +332,7 @@
   // Firebase (opcional: si falla, la biblioteca sigue funcionando solo local)
   let fbDb = null;
   let firebaseListo = false;
+  let firebaseError = null;
   try {
     const firebaseConfig = {
       apiKey: "AIzaSyDP0GORVPDq0JiRvKTIsuZfC0zZK7OjWE4",
@@ -337,7 +346,7 @@
     fbDb = firebase.firestore();
     firebaseListo = true;
   } catch (e) {
-    console.warn('Firebase no disponible, solo modo local:', e);
+    firebaseError = e.message || String(e);
   }
 
   async function fbGuardarNovela(novela) {
@@ -365,22 +374,66 @@
 
   async function sincronizarDesdeFirebase() {
     if (!firebaseListo) return;
+    estadoFirebase.classList.add('sincronizando');
     try {
       const novelasFb = await fbCargarNovelas();
       const capitulosFb = await fbCargarCapitulos();
+      let nuevas = 0;
       for (const n of novelasFb) {
         const existente = await dbVer('novelas', n.id);
         if (!existente || (n.actualizado || 0) > (existente.actualizado || 0)) {
           await dbPoner('novelas', n);
+          nuevas += 1;
         }
       }
       for (const c of capitulosFb) {
         const existente = await dbVer('capitulos', c.id);
         if (!existente || (c.actualizado || 0) > (existente.actualizado || 0)) {
           await dbPoner('capitulos', c);
+          nuevas += 1;
         }
       }
+      if (nuevas > 0) { aviso(nuevas + ' elemento' + (nuevas === 1 ? '' : 's') + ' sincronizado' + (nuevas === 1 ? '' : 's') + ' desde la nube'); }
     } catch (e) { console.warn('Sync Firebase:', e); }
+    estadoFirebase.classList.remove('sincronizando');
+    actualizarEstadoFirebase();
+  }
+
+  // Sube TODO lo que tengas local a Firebase (novelas y capítulos).
+  // Úsalo si creaste capítulos en otra ventana o en incógnito y no subieron.
+  async function subirTodoAFirebase() {
+    if (!firebaseListo) { aviso('Firebase no disponible'); return; }
+    try {
+      const novelas = await dbTodo('novelas');
+      const capitulos = await dbTodo('capitulos');
+      let subidas = 0;
+      for (const n of novelas) {
+        await fbGuardarNovela(n);
+        subidas += 1;
+      }
+      for (const c of capitulos) {
+        await fbGuardarCapitulo(c);
+        subidas += 1;
+      }
+      aviso(subidas + ' elemento' + (subidas === 1 ? '' : 's') + ' subido' + (subidas === 1 ? '' : 's') + ' a la nube');
+    } catch (e) {
+      console.warn('Subir a Firebase:', e);
+      aviso('Error subiendo a la nube');
+    }
+  }
+
+  function actualizarEstadoFirebase() {
+    if (!estadoFirebase) { return; }
+    estadoFirebase.hidden = false;
+    if (!firebaseListo) {
+      estadoFirebase.textContent = '☁';
+      estadoFirebase.className = 'desconectado';
+      estadoFirebase.title = 'Sin conexión a la nube: ' + (firebaseError || 'error desconocido');
+    } else {
+      estadoFirebase.textContent = '☁';
+      estadoFirebase.className = 'conectado';
+      estadoFirebase.title = 'Conectado a Firebase (nube)';
+    }
   }
 
   (function () {
@@ -549,6 +602,7 @@
   const btnAtras = document.getElementById('btn-atras');
   const btnAjustes = document.getElementById('btn-ajustes');
   const btnEditarCap = document.getElementById('btn-editar-cap');
+  const estadoFirebase = document.getElementById('estado-firebase');
   const barraProgreso = document.getElementById('progreso');
   const rellenoProgreso = document.getElementById('progreso-relleno');
   const navLector = document.getElementById('nav-lector');
@@ -601,6 +655,8 @@
 
   // ---------------------------------------------------------------- dibujar
   async function render() {
+    // Actualizar indicador de estado de Firebase
+    actualizarEstadoFirebase();
     // Sincronizar con Firebase en segundo plano, sin bloquear la carga
     sincronizarDesdeFirebase().catch(() => {});
     const ruta = rutaActual();
@@ -665,6 +721,10 @@
     html += '<button class="principal" id="b-nueva">Nueva novela</button>';
     html += '<button id="b-importar">Importar .txt</button>';
     html += '<button id="b-copia">Copia de seguridad</button>';
+    if (firebaseListo) {
+      html += '<button id="b-subir-nube">Subir a la nube</button>';
+      html += '<button id="b-sincronizar">Sincronizar desde la nube</button>';
+    }
     html += '</div>';
 
     if (seguirCap && seguirNovela) {
@@ -699,6 +759,25 @@
       document.getElementById('b-nueva').addEventListener('click', dialogoNuevaNovela);
       document.getElementById('b-importar').addEventListener('click', dialogoImportarNovelas);
       document.getElementById('b-copia').addEventListener('click', dialogoCopia);
+      const btnSubirNube = document.getElementById('b-subir-nube');
+      if (btnSubirNube) {
+        btnSubirNube.addEventListener('click', async () => {
+          btnSubirNube.classList.add('sincronizando');
+          await subirTodoAFirebase();
+          btnSubirNube.classList.remove('sincronizando');
+          actualizarEstadoFirebase();
+          aviso('Subido a la nube');
+        });
+      }
+      const btnSincronizar = document.getElementById('b-sincronizar');
+      if (btnSincronizar) {
+        btnSincronizar.addEventListener('click', async () => {
+          btnSincronizar.classList.add('sincronizando');
+          await sincronizarDesdeFirebase();
+          btnSincronizar.classList.remove('sincronizando');
+          render();
+        });
+      }
       const seguir = document.getElementById('b-seguir');
       if (seguir) {
         seguir.addEventListener('click', () => {
