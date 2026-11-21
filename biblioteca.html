@@ -295,6 +295,8 @@
   .meta { color: var(--tenue); font-size: 13px; }
   .separador { border: 0; border-top: 1px solid var(--linea); margin: 18px 0; }
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -318,41 +320,51 @@
 <div id="modal" hidden><div id="modal-caja"></div></div>
 <p id="aviso" hidden></p>
 
-<script type="module">
-  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js';
-  import { getFirestore, doc, setDoc, getDocs, collection } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js';
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyDP0GORVPDq0JiRvKTIsuZfC0zZK7OjWE4",
-    authDomain: "mi-biblioteca-novelas.firebaseapp.com",
-    projectId: "mi-biblioteca-novelas",
-    storageBucket: "mi-biblioteca-novelas.firebasestorage.app",
-    messagingSenderId: "992048920246",
-    appId: "1:992048920246:web:0b593d969769c158c4d817"
-  };
-  const fbApp = initializeApp(firebaseConfig);
-  const fbDb = getFirestore(fbApp);
+<script>
+  // Firebase (opcional: si falla, la biblioteca sigue funcionando solo local)
+  let fbDb = null;
+  let firebaseListo = false;
+  try {
+    const firebaseConfig = {
+      apiKey: "AIzaSyDP0GORVPDq0JiRvKTIsuZfC0zZK7OjWE4",
+      authDomain: "mi-biblioteca-novelas.firebaseapp.com",
+      projectId: "mi-biblioteca-novelas",
+      storageBucket: "mi-biblioteca-novelas.firebasestorage.app",
+      messagingSenderId: "992048920246",
+      appId: "1:992048920246:web:0b593d969769c158c4d817"
+    };
+    firebase.initializeApp(firebaseConfig);
+    fbDb = firebase.firestore();
+    firebaseListo = true;
+  } catch (e) {
+    console.warn('Firebase no disponible, solo modo local:', e);
+  }
 
   async function fbGuardarNovela(novela) {
-    try { await setDoc(doc(fbDb, 'novelas', novela.id), novela); } catch (e) { console.warn('Firebase guardar novela:', e); }
+    if (!firebaseListo) return;
+    try { await fbDb.collection('novelas').doc(novela.id).set(novela); } catch (e) { console.warn('Firebase novela:', e); }
   }
   async function fbGuardarCapitulo(capitulo) {
-    try { await setDoc(doc(fbDb, 'capitulos', capitulo.id), capitulo); } catch (e) { console.warn('Firebase guardar capítulo:', e); }
+    if (!firebaseListo) return;
+    try { await fbDb.collection('capitulos').doc(capitulo.id).set(capitulo); } catch (e) { console.warn('Firebase capítulo:', e); }
   }
   async function fbCargarNovelas() {
+    if (!firebaseListo) return [];
     try {
-      const snap = await getDocs(collection(fbDb, 'novelas'));
+      const snap = await fbDb.collection('novelas').get();
       return snap.docs.map(d => d.data());
     } catch (e) { console.warn('Firebase cargar novelas:', e); return []; }
   }
   async function fbCargarCapitulos() {
+    if (!firebaseListo) return [];
     try {
-      const snap = await getDocs(collection(fbDb, 'capitulos'));
+      const snap = await fbDb.collection('capitulos').get();
       return snap.docs.map(d => d.data());
     } catch (e) { console.warn('Firebase cargar capítulos:', e); return []; }
   }
 
   async function sincronizarDesdeFirebase() {
+    if (!firebaseListo) return;
     try {
       const novelasFb = await fbCargarNovelas();
       const capitulosFb = await fbCargarCapitulos();
