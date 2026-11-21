@@ -589,7 +589,8 @@
 
   // ---------------------------------------------------------------- dibujar
   async function render() {
-    await sincronizarDesdeFirebase();
+    // Sincronizar con Firebase en segundo plano, sin bloquear la carga
+    sincronizarDesdeFirebase().catch(() => {});
     const ruta = rutaActual();
     cerrarModal();
     navLector.hidden = true;
