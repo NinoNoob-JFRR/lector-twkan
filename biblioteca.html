@@ -569,6 +569,21 @@
     const ultimo = await dbVer('meta', 'ultimo');
     const ultimoCap = ultimo && ultimo.capituloId ? capitulos.find((c) => c.id === ultimo.capituloId) : null;
 
+    // Buscar el mejor candidato para "Continuar": último capítulo leído,
+    // si no hay ninguno leído, el capítulo más recientemente actualizado.
+    let seguirCap = null;
+    let seguirNovela = null;
+    const leidos = capitulos.filter((c) => c.leido);
+    if (leidos.length) {
+      const ultimoLeido = leidos[leidos.length - 1];
+      seguirCap = ultimoLeido;
+      seguirNovela = novelas.find((n) => n.id === ultimoLeido.novelaId);
+    } else if (capitulos.length) {
+      const masReciente = capitulos.reduce((a, b) => (b.actualizado || 0) > (a.actualizado || 0) ? b : a);
+      seguirCap = masReciente;
+      seguirNovela = novelas.find((n) => n.id === masReciente.novelaId);
+    }
+
     let html = '<div class="contenedor">';
     html += '<h1 class="pequeno">Tu biblioteca</h1>';
     html += '<p class="sub">' + novelas.length + (novelas.length === 1 ? ' novela' : ' novelas')
@@ -580,12 +595,9 @@
     html += '<button id="b-copia">Copia de seguridad</button>';
     html += '</div>';
 
-    if (ultimoCap && ultimo && ultimo.novelaId) {
-      const novela = novelas.find((n) => n.id === ultimo.novelaId);
-      if (novela) {
-        html += '<div class="botones"><button id="b-seguir">Continuar: '
-          + escapar(recortar(ultimoCap.titulo || 'capítulo', 42)) + '</button></div>';
-      }
+    if (seguirCap && seguirNovela) {
+      html += '<div class="botones"><button id="b-seguir">Continuar: '
+        + escapar(recortar(seguirCap.titulo || 'capítulo', 42)) + '</button></div>';
     }
 
     if (!novelas.length) {
@@ -617,7 +629,11 @@
       document.getElementById('b-copia').addEventListener('click', dialogoCopia);
       const seguir = document.getElementById('b-seguir');
       if (seguir) {
-        seguir.addEventListener('click', () => ir('#/n/' + ultimo.novelaId + '/c/' + ultimo.capituloId));
+        seguir.addEventListener('click', () => {
+          if (seguirNovela && seguirCap) {
+            ir('#/n/' + seguirNovela.id + '/c/' + seguirCap.id);
+          }
+        });
       }
     } catch (e) {
       console.error('Error asignando eventos de biblioteca:', e);
