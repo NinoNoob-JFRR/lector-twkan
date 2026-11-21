@@ -427,6 +427,14 @@
 
   const nuevoId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
+  // Extrae el número de un nombre de archivo (ej. "417.txt" -> 417, "capitulo 440.txt" -> 440).
+  // Devuelve null si no hay número (para notas del autor, etc.).
+  function extraerNumeroDeNombre(nombre) {
+    const base = String(nombre || '').replace(/\.txt$/i, '');
+    const m = base.match(/(\d+)/);
+    return m ? Number(m[1]) : null;
+  }
+
   // ------------------------------------------------------------------ estado
   const estado = { novela: null, capitulo: null, capitulos: [], novelas: [], orden: 'asc' };
 
@@ -1129,9 +1137,21 @@
       const archivos = Array.from(entrada.files || []);
       if (!archivos.length) { aviso('Elige al menos un archivo'); return; }
       const opcion = document.getElementById('i-dividir').value;
+      // Ordenar archivos: primero los que tienen número en el nombre (ascendente),
+      // luego los que no tienen número alfabéticamente.
+      archivos.sort((a, b) => {
+        const na = extraerNumeroDeNombre(a.name);
+        const nb = extraerNumeroDeNombre(b.name);
+        if (na !== null && nb !== null) { return na - nb; }
+        if (na !== null) { return -1; }
+        if (nb !== null) { return 1; }
+        return a.name.localeCompare(b.name);
+      });
       const novelas = await dbTodo('novelas');
       let nuevasNovelas = 0;
       let nuevosCaps = 0;
+      const ahora = Date.now();
+      let seg = 0;
       for (const archivo of archivos) {
         const texto = await leerArchivo(archivo);
         const partes = opcion === 'nada'
@@ -1139,7 +1159,8 @@
           : dividirEnCapitulos(texto, opcion);
         const nombre = archivo.name.replace(/\.txt$/i, '');
         const repetida = novelas.find((n) => normalizar(n.titulo) === normalizar(nombre));
-        const novela = repetida || { id: nuevoId(), titulo: nombre, autor: '', creado: Date.now(), actualizado: Date.now() };
+        const novela = repetida || { id: nuevoId(), titulo: nombre, autor: '', creado: ahora + seg, actualizado: ahora + seg };
+        seg += 1000;
         if (!repetida) { await dbPoner('novelas', novela); nuevasNovelas += 1; }
         const yaTiene = await capitulosDe(novela.id);
         let numero = siguienteNumero(yaTiene);
@@ -1152,9 +1173,10 @@
             texto: parte.texto,
             pos: 0,
             leido: false,
-            creado: Date.now(),
-            actualizado: Date.now()
+            creado: ahora + seg,
+            actualizado: ahora + seg
           };
+          seg += 1000;
           await dbPoner('capitulos', cap);
           nuevosCaps += 1;
           numero += 1;
@@ -1198,11 +1220,23 @@
       const archivos = Array.from(document.getElementById('ic-archivos').files || []);
       if (!archivos.length) { aviso('Elige al menos un archivo'); return; }
       const opcion = document.getElementById('ic-dividir').value;
+      // Ordenar archivos: primero los que tienen número en el nombre (ascendente),
+      // luego los que no tienen número (notas del autor, etc.) alfabéticamente.
+      archivos.sort((a, b) => {
+        const na = extraerNumeroDeNombre(a.name);
+        const nb = extraerNumeroDeNombre(b.name);
+        if (na !== null && nb !== null) { return na - nb; }
+        if (na !== null) { return -1; }
+        if (nb !== null) { return 1; }
+        return a.name.localeCompare(b.name);
+      });
       const existentes = await capitulosDe(novelaId);
       const vistos = indiceDeTextos(existentes);
       let numero = siguienteNumero(existentes);
       let total = 0;
       let repetidos = 0;
+      const ahora = Date.now();
+      let seg = 0;
       for (const archivo of archivos) {
         const contenido = await leerArchivo(archivo);
         const partes = opcion === 'nada'
@@ -1221,9 +1255,10 @@
             texto: parte.texto,
             pos: 0,
             leido: false,
-            creado: Date.now(),
-            actualizado: Date.now()
+            creado: ahora + seg,
+            actualizado: ahora + seg
           });
+          seg += 1000;
           numero += 1;
           total += 1;
         }
