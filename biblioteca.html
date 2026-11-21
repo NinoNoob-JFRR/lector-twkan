@@ -777,8 +777,8 @@
   }
 
   function patronTitulo(linea) {
-    return /^[ \t]*(第[0-9０-９一二三四五六七八九十百千零〇两]+[章节回卷][^\n]{0,40})[ \t]*$/.test(linea)
-      || /^[ \t]*(cap[ií]tulo\s+[0-9]+[^\n]{0,40})[ \t]*$/i.test(linea);
+    return /^[ \t]*(第[0-9０-９一二三四五六七八九十百千零〇两]+[章节回卷][^\n]{0,80})[ \t]*$/.test(linea)
+      || /^[ \t]*(cap[ií]tulo\s+[0-9]+[^\n]{0,80})[ \t]*$/i.test(linea);
   }
 
   function siguienteNumero(capitulos) {
