@@ -394,7 +394,7 @@
       if (nuevas > 0) { aviso(nuevas + ' elemento' + (nuevas === 1 ? '' : 's') + ' sincronizado' + (nuevas === 1 ? '' : 's') + ' desde la nube'); }
     } catch (e) { console.warn('Sync Firebase:', e); }
     estadoFirebaseEl.classList.remove('sincronizando');
-    actualizarestadoFirebaseEl();
+    actualizarEstadoFirebaseEl();
   }
 
   // Sube TODO lo que tengas local a Firebase (novelas y capÃ­tulos).
@@ -420,7 +420,7 @@
     }
   }
 
-  function actualizarestadoFirebaseEl() {
+  function actualizarEstadoFirebaseEl() {
     if (!estadoFirebaseEl) { return; }
     estadoFirebaseEl.hidden = false;
     if (!firebaseListo) {
@@ -654,7 +654,7 @@
   // ---------------------------------------------------------------- dibujar
   async function render() {
     // Actualizar indicador de estado de Firebase
-    actualizarestadoFirebaseEl();
+    actualizarEstadoFirebaseEl();
     // sincronizar con Firebase en segundo plano, sin bloquear la carga
     sincronizarDesdeFirebase().catch(() => {});
     const ruta = rutaActual();
@@ -763,7 +763,7 @@
           btnsubirnube.classList.add('sincronizando');
           await subirTodoAFirebase();
           btnsubirnube.classList.remove('sincronizando');
-          actualizarestadoFirebaseEl();
+          actualizarEstadoFirebaseEl();
           aviso('subido a la nube');
         });
       }
@@ -1776,6 +1776,7 @@
 </script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>`n<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>`n</body>
 </html>
+
 
 
 
